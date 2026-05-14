@@ -1,8 +1,16 @@
 import os
-import asyncio
+#import asyncio
 from discord.ext import commands
 import discord
 import logging
+from api.log import (
+    log_command_usage,
+    log_command_error,
+    log_app_command_usage,
+    log_app_command_error,
+)
+from api.buttons import BotLinks
+from discord import app_commands
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +31,7 @@ class Amenity(commands.Bot):
             intents=intents,
             case_insensitive=True,
             help_command=None,
+            owner_id=931347423773741097,
             strip_after_prefix=True,
             allowed_mentions=discord.AllowedMentions.none(),
         )
@@ -39,13 +48,20 @@ class Amenity(commands.Bot):
         )
 
     async def setup_hook(self):
-        guild_id: int = os.getenv("GUILD_ID")
-        if guild_id:
-            guild = discord.Object(id=int(guild_id))
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-        else:
-            await self.tree.sync()
+        try:
+            await self.load_extension("jishaku")
+            await self.load_extension("cogs.reminder")
+        except Exception as e:
+            logger.error(f"Failed to load jishaku: {e}")
+
+
+        # guild_id: int = os.getenv("GUILD_ID")
+        # if guild_id:
+        #     guild = discord.Object(id=int(guild_id))
+        #     self.tree.copy_global_to(guild=guild)
+        #     await self.tree.sync(guild=guild)
+        # else:
+        await self.tree.sync()
 
     async def on_ready(self):
         # if not self.user:
@@ -57,12 +73,118 @@ class Amenity(commands.Bot):
         logger.info(f"[+] | WATCHING {self.users}")
 
 
-    async def on_command_error(self, context, exception):
+    async def on_command_error(self, context: commands.Context, exception: Exception):
         if isinstance(exception, commands.CommandNotFound):
             return
+        
+        if isinstance(exception, commands.CommandOnCooldown):
+            await context.reply(
+                f"Command on cooldown. Try again after {exception.retry_after:.2f} seconds.",
+                ephemeral=True,
+                mention_author=False,
+                delete_after=5
+            )
+            return
+
+        if isinstance(exception, commands.BadArgument):
+            await context.send_help(context.command)
+            return
+        
+        if isinstance(exception, commands.NoPrivateMessage):
+            await context.reply(
+                "This command can only be used in a server.",
+                ephemeral=True,
+                mention_author=False,
+                delete_after=5
+            )
+            return
+        if isinstance(exception, commands.MissingRequiredArgument):
+            await context.send_help(context.command)
+            return
+        
+        if isinstance(exception, commands.CheckFailure):
+            await context.reply(
+                "You don't have permission to use this command.",
+                ephemeral=True,
+                mention_author=False,
+                delete_after=5
+            )
+            return
+        
+        if isinstance(exception, commands.UserInputError):
+            await context.send_help(context.command)
+            return
+        
+        if isinstance(exception, commands.MaxConcurrencyReached):
+            await context.reply(
+                "This command is currently being used by too many people. Please try again later.",
+                ephemeral=True,
+                mention_author=False,
+                delete_after=5
+            )
+            return
+        await log_command_error(context, exception)
         raise exception
 
+    async def on_command_completion(self, context: commands.Context):
+        await log_command_usage(context)
 
+    async def on_app_command_completion(self, interaction: discord.Interaction, command: app_commands.AppCommand):
+        await log_app_command_usage(interaction, command)
+
+    async def on_app_command_error(self, interaction: discord.Interaction, exception: Exception):
+        # Helper to send response (handles both response and followup)
+        async def send_error(embed: discord.Embed, ephemeral: bool = True, view: discord.ui.View = None):
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(embed=embed, ephemeral=ephemeral, view=view)
+                else:
+                    await interaction.response.send_message(embed=embed, ephemeral=ephemeral, view=view)
+            except discord.HTTPException:
+                pass  # Interaction may have expired
+
+
+        if isinstance(exception, app_commands.CommandOnCooldown):
+            embed = discord.Embed(
+                description=f"Command on cooldown. Try again after {exception.retry_after:.2f} seconds.",
+                color=discord.Color.red()
+            )
+            await send_error(embed, ephemeral=True)
+            return
+        
+        if isinstance(exception, app_commands.TransformerError):
+            embed = discord.Embed(
+                description="Invalid argument provided. Please check your input.",
+                color=discord.Color.red()
+            )
+            await send_error(embed, ephemeral=True)
+            return
+
+        if isinstance(exception, app_commands.NoPrivateMessage):
+            embed = discord.Embed(
+                description="This command can only be used in a server.",
+                color=discord.Color.red()
+            )
+            await send_error(embed, ephemeral=True)
+            return
+        
+        if isinstance(exception, app_commands.CheckFailure):
+            embed = discord.Embed(
+                description="You don't have permission to use this command.",
+                color=discord.Color.red()
+            )
+            await send_error(embed, ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            description="An unexpected error occurred. Please try again later.",
+            color=discord.Color.red()
+        )
+        await send_error(embed, ephemeral=True, view=BotLinks().support())
+        await log_app_command_error(interaction, exception)
+        raise exception
+
+    
     async def invoke_help_command(self, ctx: commands.Context) -> None:
         """Send help for the current command."""
         await ctx.send_help(ctx.command)

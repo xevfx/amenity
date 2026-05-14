@@ -1,0 +1,261 @@
+import os
+import sqlite3
+import time as tm
+from typing import Iterable
+import discord
+from discord import app_commands
+from discord.ext import commands
+from discord.ext import tasks
+from datetime import datetime
+from api.parser import StringToTime, TimeToString
+from core.cache import cache
+from api.log import log_command_error
+
+
+
+class Reminder(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.db_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..","data/reminders.db")
+        )
+        self._init_db()
+        self.check_reminders.start()
+
+
+    def cog_unload(self) -> None:
+        self.check_reminders.cancel()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reminders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    remind_at INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS reminders_user_id ON reminders (user_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS reminders_remind_at ON reminders (remind_at)")
+
+    def _cache_key(self, user_id: int) -> str:
+        return f"reminders:{user_id}"
+
+    def _fetch_user_reminders(self, user_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, name, remind_at, created_at FROM reminders WHERE user_id = ? ORDER BY remind_at",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _get_user_reminders(self, user_id: int) -> list[dict]:
+        return cache.get_or_set(self._cache_key(user_id), lambda: self._fetch_user_reminders(user_id), ttl=60)
+
+    def _invalidate_user_cache(self, user_id: int) -> None:
+        cache.delete(self._cache_key(user_id))
+
+    async def _send_due_reminders(self, rows: Iterable[sqlite3.Row]) -> None:
+        for row in rows:
+            user_id = int(row["user_id"])
+            name = row["name"]
+            reminder_id = row["id"]
+            user = self.bot.get_user(user_id)
+            if user is None:
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                except discord.HTTPException:
+                    user = None
+            if user is not None:
+                try:
+                    await user.send(f"Reminder: {name}")
+                except discord.HTTPException:
+                    pass
+            with self._connect() as conn:
+                conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            self._invalidate_user_cache(user_id)
+
+
+
+    @tasks.loop(seconds=30)
+    async def check_reminders(self) -> None:
+        now = int(tm.time())
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, user_id, name FROM reminders WHERE remind_at <= ? ORDER BY remind_at LIMIT 50",
+                (now,),
+            ).fetchall()
+        if rows:
+            await self._send_due_reminders(rows)
+
+
+    @check_reminders.before_loop
+    async def check_reminders_before_loop(self) -> None:
+        await self.bot.wait_until_ready()
+
+
+    async def _send_message(
+        self,
+        ctx: commands.Context,
+        content: str,
+        ephemeral: bool = False,
+    ) -> None:
+        if ctx.interaction:
+            if ctx.interaction.response.is_done():
+                await ctx.interaction.followup.send(content=content, ephemeral=ephemeral)
+            else:
+                await ctx.interaction.response.send_message(content=content, ephemeral=ephemeral)
+            return
+        await ctx.send(content)
+
+    @commands.hybrid_group(name="reminder", description="Manage reminders")
+    async def reminder(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.reply("Use `/reminder create`, `/reminder list`, `/reminder delete`, or `/reminder nuke`.",mention_author=False,ephemeral=True)
+            return
+
+    @reminder.command(name="create", description="Create a new reminder")
+    @app_commands.describe(
+        time="When to be reminded (e.g. 1h')",
+        name="The reminder message"
+    )
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.max_concurrency(10, commands.BucketType.default, wait=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def reminder_create(self, ctx: commands.Context, time:str, *, name: str) -> None:
+        if not time:
+            await ctx.reply("Please specify a time for the reminder.", mention_author=False, ephemeral=True)
+            return
+        if not name:
+            await ctx.reply("Please specify a name for the reminder.", mention_author=False, ephemeral=True)
+            return
+        if len(name) > 15:
+            await ctx.reply("Reminder name is too long (max 15 characters).", mention_author=False, ephemeral=True)
+            return
+        
+        try:
+            sec = StringToTime(time)
+            if sec < 30:
+                await ctx.reply("Please specify a time of at least 30 seconds.", mention_author=False, ephemeral=True)
+                return
+            
+            now = int(tm.time())
+            remind_at = now + sec
+            created_at = now
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO reminders (user_id, name, remind_at, created_at) VALUES (?, ?, ?, ?)",
+                    (ctx.author.id, name, remind_at, created_at),
+                )
+            self._invalidate_user_cache(ctx.author.id)
+
+            await ctx.reply(f"You will be reminded about '{name}' in <t:{remind_at}:R>.", mention_author=False, ephemeral=True)
+        except Exception as exc:
+            await ctx.reply(f"Error creating reminder", mention_author=False, ephemeral=True)
+            await log_command_error(ctx, exc)
+
+
+
+    @reminder.command(name="list", description="List your reminders")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.max_concurrency(10, commands.BucketType.default, wait=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def reminder_list(self, ctx: commands.Context) -> None:
+        reminders = self._get_user_reminders(ctx.author.id)
+        if not reminders:
+            await ctx.reply("You have no reminders.", ephemeral=True, mention_author=False)
+            return
+
+        now = int(tm.time())
+        lines = []
+        for reminder in reminders:
+            remaining = max(reminder["remind_at"] - now, 0)
+            lines.append(f"`{reminder['name']}` - <t:{reminder['remind_at']}:R>")
+        message = "\n".join(lines)
+        if len(message) > 1900:
+            message = message[:1900] + "..."
+
+        await ctx.reply(content=message, ephemeral=True, mention_author=False)
+
+
+
+    @reminder.command(name="delete", description="Delete a reminder")
+    @app_commands.describe(name="The name of the reminder to delete")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.max_concurrency(10, commands.BucketType.default, wait=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def reminder_delete(self, ctx: commands.Context, name: str) -> None:
+        name = name.strip()
+        if not name:
+            await ctx.reply("Reminder name is required.", ephemeral=True, mention_author=False)
+            return
+        if len(name) > 15:
+            await ctx.reply("Reminder name is too long (max 15 characters).", ephemeral=True, mention_author=False)
+            return
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM reminders WHERE name = ? AND user_id = ?",
+                (name, ctx.author.id),
+            )
+        if cursor.rowcount == 0:
+            await ctx.reply("Reminder not found.", ephemeral=True, mention_author=False)
+            return
+        self._invalidate_user_cache(ctx.author.id)
+        await ctx.reply(f"Deleted reminder named `{name}`.", ephemeral=True, mention_author=False)
+
+    @reminder_delete.autocomplete("name")
+    async def reminder_delete_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        reminders = self._get_user_reminders(interaction.user.id)
+        current_lower = current.strip().lower()
+        choices: list[app_commands.Choice[str]] = []
+        for reminder in reminders:
+            name = reminder["name"]
+            if current_lower and current_lower not in name.lower():
+                continue
+            choices.append(app_commands.Choice(name=name, value=name))
+            if len(choices) >= 25:
+                break
+        return choices
+
+
+    @reminder.command(name="nuke", description="Nuke all your reminders")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.max_concurrency(10, commands.BucketType.default, wait=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def reminder_nuke(self, ctx: commands.Context) -> None:
+        try:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM reminders WHERE user_id = ?",
+                    (ctx.author.id,),
+                )
+            self._invalidate_user_cache(ctx.author.id)
+            await ctx.reply(
+                f"Deleted {cursor.rowcount} reminders.",
+                ephemeral=True,
+                mention_author=False
+            )
+        except Exception as exc:
+            await ctx.reply("Error deleting reminders.", ephemeral=True, mention_author=False)
+            await log_command_error(ctx, exc)
+
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(Reminder(bot))
