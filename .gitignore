@@ -1,3 +1,7 @@
 amenity/
 .env
 __pycache__/
+.ruff_cache/
+.pytest_cache/
+data/reminders.db
+test/

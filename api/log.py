@@ -1,11 +1,12 @@
-import discord
-import aiohttp
-from discord import Webhook
-from discord import app_commands
 import os
-from datetime import datetime
-from discord.ext import commands
 import traceback
+from datetime import datetime
+
+import aiohttp
+import discord
+from discord import Webhook, app_commands
+from discord.ext import commands
+
 
 def _truncate_text(text: str, limit: int) -> str:
     if len(text) <= limit:
@@ -42,7 +43,7 @@ async def UsageWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return False
-    
+
 
 async def ErrorWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
     """
@@ -78,13 +79,11 @@ async def ErrorWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
 async def log_command_usage(ctx: commands.Context) -> None:
     """
     Log prefix command usage for on_command_completion event.
-    
+
     Args:
         ctx: Discord context object
     """
     try:
-        channel = ctx.channel if ctx.guild else await ctx.author.create_dm()
-        
         embed = discord.Embed(
             color=discord.Color.magenta(),
             timestamp=datetime.now()
@@ -117,9 +116,9 @@ async def log_command_usage(ctx: commands.Context) -> None:
             value=str(ctx.invoked_subcommand) if ctx.invoked_subcommand else "None",
             inline=True
         )
-        
+
         await UsageWebhook(embed)
-        
+
     except Exception as e:
         print(f"Error logging command usage: {e}")
 

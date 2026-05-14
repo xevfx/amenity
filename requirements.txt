@@ -2,3 +2,6 @@ discord.py
 python-dotenv
 jishaku
 colorama
+pytest
+pytest-asyncio
+dpytest
