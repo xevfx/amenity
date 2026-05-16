@@ -46,19 +46,23 @@ def StringToTime(time_str: str) -> int:
         timestamp = int(timestamp_match.group(1))
         return timestamp - int(tm.time())
 
-    pattern = r"^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)$"
-    match = re.match(pattern, cleaned.lower())
-
-    if not match:
+    normalized = cleaned.lower()
+    valid_pattern = r"^(\d+(?:\.\d+)?\s*[a-zA-Z]+)+$"
+    if not re.match(valid_pattern, normalized):
         raise ValueError("Invalid time format. Use format like '1h', '30m', '1d'")
 
-    number = float(match.group(1))
-    unit = match.group(2)
+    segment_pattern = r"(\d+(?:\.\d+)?)\s*([a-zA-Z]+)"
+    segments = re.findall(segment_pattern, normalized)
+    if not segments:
+        raise ValueError("Invalid time format. Use format like '1h', '30m', '1d'")
 
-    if unit not in time_units:
-        raise ValueError(f"Unknown time unit: {unit}. Use s, m, h, d, or w")
+    total_seconds = 0
+    for number_str, unit in segments:
+        if unit not in time_units:
+            raise ValueError(f"Unknown time unit: {unit}. Use s, m, h, d, or w")
+        total_seconds += float(number_str) * time_units[unit]
 
-    return int(number * time_units[unit])
+    return int(total_seconds)
 
 
 
