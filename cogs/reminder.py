@@ -196,7 +196,7 @@ class Reminder(commands.Cog):
 
     @reminder.command(name="create", description="Create a new reminder")
     @app_commands.describe(
-        time="When to be reminded (e.g. 1h')",
+        time="When to be reminded (e.g. 1h30m, 1h 30m, <t:1778847300:t>)",
         name="The reminder message"
     )
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -266,7 +266,7 @@ class Reminder(commands.Cog):
             await self._send_embed(ctx, "You have no reminders.", ephemeral=True)
             return
 
-        lines = [f"`{reminder['name']}` - <t:{reminder['remind_at']}:R>" for reminder in reminders]
+        lines = [f"{reminder['name']} | <t:{reminder['remind_at']}:R>" for reminder in reminders]
         embeds = PaginatorHelper.create_adaptive_embeds(
             lines,
             title="Your reminders",
@@ -382,7 +382,7 @@ class ReminderContextModal(discord.ui.Modal):
         self.message = message
         self.time_input = discord.ui.TextInput(
             label="When should I remind you?",
-            placeholder="e.g. 1h, 30m, 2d",
+            placeholder="e.g. 1h30m, 1h 30m, <t:1778847300:t>",
             max_length=50,
         )
         self.name_input = discord.ui.TextInput(
