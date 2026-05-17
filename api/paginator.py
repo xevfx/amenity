@@ -4,7 +4,13 @@ import discord
 
 
 class EmbedPaginator(discord.ui.View):
-    def __init__(self, embeds: list[discord.Embed], *, timeout: float = 180.0, author_id: int | None = None):
+    def __init__(
+        self,
+        embeds: list[discord.Embed],
+        *,
+        timeout: float = 180.0,
+        author_id: int | None = None,
+    ) -> None:
         super().__init__(timeout=timeout)
         self.embeds = embeds
         self.current_page = 0
@@ -14,7 +20,7 @@ class EmbedPaginator(discord.ui.View):
         # Update button states
         self.update_buttons()
 
-    def update_buttons(self):
+    def update_buttons(self) -> None:
         """Update button states based on current page"""
         self.first_page.disabled = self.current_page == 0
         self.previous_page.disabled = self.current_page == 0
@@ -32,45 +38,69 @@ class EmbedPaginator(discord.ui.View):
         return True
 
     @discord.ui.button(label="First", style=discord.ButtonStyle.secondary)
-    async def first_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def first_page(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
         """Go to first page"""
         self.current_page = 0
         self.update_buttons()
         await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
     @discord.ui.button(label="Prev", style=discord.ButtonStyle.secondary)
-    async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def previous_page(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
         """Go to previous page"""
         self.current_page -= 1
         self.update_buttons()
         await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
     @discord.ui.button(label="1/1", style=discord.ButtonStyle.secondary, disabled=True)
-    async def page_counter(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def page_counter(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
         """Page counter - disabled button for display"""
         pass
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
-    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def next_page(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
         """Go to next page"""
         self.current_page += 1
         self.update_buttons()
         await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
     @discord.ui.button(label="Last", style=discord.ButtonStyle.secondary)
-    async def last_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def last_page(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
         """Go to last page"""
         self.current_page = self.max_pages - 1
         self.update_buttons()
         await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.secondary)
-    async def delete_message(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def delete_message(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
         """Delete the paginator message"""
         await interaction.response.defer()
         await interaction.delete_original_response()
 
-    async def on_timeout(self):
+    async def on_timeout(self) -> None:
         """Disable all buttons when the view times out"""
         for item in self.children:
             item.disabled = True
@@ -206,4 +236,3 @@ class PaginatorHelper:
             embeds.append(embed)
 
         return embeds
-

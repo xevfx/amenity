@@ -1,3 +1,3 @@
-from .amenity import Amenity as Amenity
+from .amenity import Amenity
 
 __all__ = ["Amenity"]

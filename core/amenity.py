@@ -54,8 +54,9 @@ class Amenity(commands.Bot):
         try:
             await self.load_extension("jishaku")
             await self.load_extension("cogs.reminder")
+            await self.load_extension("cogs.user_utility")
         except Exception as e:
-            logger.error(f"Failed to load jishaku: {e}")
+            logger.error(f"Failed to load extensions: {e}")
 
 
         # guild_id: int = os.getenv("GUILD_ID")

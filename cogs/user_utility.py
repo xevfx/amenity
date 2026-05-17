@@ -1,0 +1,594 @@
+import os
+import re
+from pathlib import Path
+
+import discord
+import qrcode
+from discord import app_commands
+from discord.ext import commands
+from PIL import Image, ImageColor, ImageDraw, ImageFilter
+import aiohttp
+
+from core.amenity import Amenity
+
+QR_GRADIENT = ("#0B0B0D", "#1A1F2E")
+QR_BACK_COLOR = "white"
+QR_GLOW_COLOR = "#1e88e5"
+
+
+def _safe_unlink(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return
+
+
+def _build_qr(data: str, *, box_size: int = 10, border: int = 4) -> qrcode.QRCode:
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=box_size,
+        border=border,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    return qr
+
+
+def _apply_gradient(
+    base_img: Image.Image,
+    *,
+    back_color: str,
+    gradient_colors: tuple[str, str],
+    direction: str,
+) -> Image.Image:
+    width, height = base_img.size
+    color1 = ImageColor.getrgb(gradient_colors[0])
+    color2 = ImageColor.getrgb(gradient_colors[1])
+
+    if direction == "horizontal":
+        gradient = Image.new("RGB", (width, 1))
+        draw = ImageDraw.Draw(gradient)
+        for x in range(width):
+            ratio = x / max(width - 1, 1)
+            r = int(color1[0] + (color2[0] - color1[0]) * ratio)
+            g = int(color1[1] + (color2[1] - color1[1]) * ratio)
+            b = int(color1[2] + (color2[2] - color1[2]) * ratio)
+            draw.line((x, 0, x, 1), fill=(r, g, b))
+        gradient = gradient.resize((width, height))
+    else:
+        gradient = Image.new("RGB", (1, height))
+        draw = ImageDraw.Draw(gradient)
+        for y in range(height):
+            ratio = y / max(height - 1, 1)
+            r = int(color1[0] + (color2[0] - color1[0]) * ratio)
+            g = int(color1[1] + (color2[1] - color1[1]) * ratio)
+            b = int(color1[2] + (color2[2] - color1[2]) * ratio)
+            draw.line((0, y, 1, y), fill=(r, g, b))
+        gradient = gradient.resize((width, height))
+
+    mask = base_img.convert("L")
+    final_img = Image.new("RGB", (width, height), ImageColor.getrgb(back_color))
+    final_img.paste(gradient, (0, 0), mask)
+    return final_img
+
+
+def _apply_glow(
+    qr: qrcode.QRCode,
+    base_img: Image.Image,
+    *,
+    box_size: int,
+    border: int,
+    glow_color: str,
+    glow_size: int,
+) -> Image.Image:
+    width, height = base_img.size
+    glow_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(glow_layer)
+    glow_rgb = ImageColor.getrgb(glow_color)
+
+    for y in range(qr.modules_count):
+        for x in range(qr.modules_count):
+            if qr.modules[y][x]:
+                bbox = (
+                    x * box_size + border - glow_size,
+                    y * box_size + border - glow_size,
+                    (x + 1) * box_size + border + glow_size,
+                    (y + 1) * box_size + border + glow_size,
+                )
+                draw.ellipse(bbox, fill=glow_rgb + (128,))
+
+    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(max(glow_size // 2, 1)))
+    combined = Image.alpha_composite(glow_layer, base_img.convert("RGBA"))
+    return combined
+
+
+def generate_qr(
+    data: str,
+    filename: str,
+    *,
+    box_size: int = 10,
+    border: int = 4,
+    fill: str = "black",
+    back_color: str = QR_BACK_COLOR,
+    fill_gradient: tuple[str, str] | None = None,
+    gradient_direction: str = "vertical",
+    add_glow: bool = False,
+    glow_color: str = QR_GLOW_COLOR,
+    glow_size: int = 10,
+) -> bool:
+    if not data or not isinstance(data, str):
+        return False
+
+    try:
+        file_path = Path(filename)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        qr = _build_qr(data, box_size=box_size, border=border)
+        if not fill_gradient and not add_glow:
+            img = qr.make_image(fill_color=fill, back_color=back_color)
+            img.save(filename)
+            return True
+
+        base_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        if fill_gradient:
+            final_img = _apply_gradient(
+                base_img,
+                back_color=back_color,
+                gradient_colors=fill_gradient,
+                direction=gradient_direction,
+            )
+        else:
+            final_img = base_img
+
+        if add_glow:
+            final_img = _apply_glow(
+                qr,
+                final_img,
+                box_size=box_size,
+                border=border,
+                glow_color=glow_color,
+                glow_size=glow_size,
+            )
+
+        final_img.save(filename)
+        return True
+    except Exception as exc:
+        print(f"QR generation error: {exc}")
+        return False
+
+
+class UserUtility(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+        self.aiohttp = aiohttp.ClientSession()
+
+
+    def cog_unload(self) -> None:
+        if not self.aiohttp.closed:
+            self.bot.loop.create_task(self.aiohttp.close())
+
+    @commands.hybrid_command(name="ping", description="Check the bot's latency.")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def ping(self, ctx: commands.Context) -> None:
+        latency = self.bot.latency * 1000
+        await ctx.reply(f"Latency: {latency:.2f} ms", ephemeral=True, mention_author=False)
+
+    @commands.hybrid_group(
+        name="qrcode",
+        invoke_without_command=True,
+        with_app_command=True,
+        aliases=["qr"],
+        description="Generate various types of QR codes.",
+    )
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.max_concurrency(15, commands.BucketType.default, wait=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def qr_group(self, ctx: commands.Context) -> None:
+        await ctx.reply("Use /qrcode", delete_after=5, ephemeral=True, mention_author=False)
+
+    async def _send_qr(
+        self,
+        ctx: commands.Context,
+        *,
+        filename: str,
+        title: str,
+        description: str | None = None,
+        color: discord.Color = 0x00FFFF,
+        fields: list[tuple[str, str]] | None = None,
+    ) -> None:
+        embed = discord.Embed(title=title, description=description, color=color)
+        if fields:
+            for name, value in fields:
+                embed.add_field(name=name, value=value, inline=False)
+        embed.set_image(url=f"attachment://{filename}")
+        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
+        await ctx.send(embed=embed, file=discord.File(filename))
+        _safe_unlink(filename)
+
+    def _qr_path(self, ctx: commands.Context, prefix: str) -> str:
+        return f"{prefix}qr_{ctx.author.id}.png"
+
+    @qr_group.command(name="text", description="Create a QR with custom text", aliases=["txt"])
+    @app_commands.describe(txt="The text to encode in the QR code (max 200 characters).")
+    async def qr_text(self, ctx: commands.Context, *, txt: str) -> None:
+        if len(txt) > 200:
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Text too long. Please limit to 200 characters.",
+                    color=discord.Color.red(),
+                ),
+                delete_after=5,
+                ephemeral=True
+            )
+            return
+
+        filename = self._qr_path(ctx, "text")
+        if not generate_qr(txt, filename, fill_gradient=QR_GRADIENT):
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Failed to generate QR code.",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+        await self._send_qr(
+            ctx,
+            filename=filename,
+            title="Text QR Code",
+            description=f"**Content:** {txt}",
+        )
+
+    @qr_group.command(name="ltc", description="Create a QR for ltc addy")
+    @app_commands.describe(addy="The Litecoin address to encode in the QR code.")
+    async def qr_ltcaddy(self, ctx: commands.Context, *, addy: str) -> None:
+        addy_value = addy.strip()
+        if not addy_value:
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Usage: /qrcode ltc <address>",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+        filename = self._qr_path(ctx, "ltc")
+        qr_payload = f"litecoin:{addy_value}"
+        if not generate_qr(qr_payload, filename, fill_gradient=QR_GRADIENT):
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Failed to generate QR code.",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+        await self._send_qr(
+            ctx,
+            filename=filename,
+            title="Ltc QR Code",
+            description=f"Addy: {addy_value}",
+        )
+
+    @qr_group.command(
+        name="upi",
+        description="Create a QR for UPI with optional amount",
+        aliases=["inr"],
+    )
+    @app_commands.describe(
+        upi_id="The UPI ID to encode in the QR code.",
+        amount="The amount to include in the UPI QR code (optional).",
+        note="A note to include in the UPI QR code (optional, max 100 characters).",
+    )
+    async def qr_upi(
+        self,
+        ctx: commands.Context,
+        upi_id: str,
+        amount: float | None = None,
+        *,
+        note: str | None = None,
+    ) -> None:
+        upi_value = upi_id.strip()
+        if not upi_value:
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Usage: /qrcode upi <upi_id> [amount] [note]",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+        if len(upi_value) > 25:
+            await ctx.send(
+                embed=discord.Embed(
+                    description="UPI ID too long. Please limit to 25 characters.",
+                    color=discord.Color.red(),
+                ),
+                delete_after=5,
+                ephemeral=True
+            )
+            return
+        if note and len(note) > 100:
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Note too long. Please limit to 100 characters.",
+                    color=discord.Color.red(),
+                ),
+                delete_after=5,
+                ephemeral=True
+            )
+            return
+        url = f"upi://pay?pa={upi_value}&pn=RecipientName"
+        if amount:
+            url += f"&am={amount}&cu=INR"
+
+        filename = self._qr_path(ctx, "upi")
+        if not generate_qr(url, filename, fill_gradient=QR_GRADIENT):
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Failed to generate QR code.",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+        await self._send_qr(
+            ctx,
+            filename=filename,
+            title="UPI QR Code",
+            color=0x00FFFF,
+            fields=[
+                ("UPI ID", upi_value),
+                ("Amount", f"₹{amount}" if amount else "Not provided"),
+                ("Note", note if note else "None"),
+            ],
+        )
+
+    @qr_group.command(name="paypal", description="Create QR for PayPal", aliases=["pp"])
+    async def paypal_qr(self, ctx: commands.Context, ppid: str) -> None:
+
+        if len(ppid) > 50:
+            await ctx.send(
+                embed=discord.Embed(
+                    description="PayPal ID too long. Please limit to 50 characters.",
+                    color=discord.Color.red(),
+                ),
+                delete_after=5,
+                ephemeral=True
+            )
+            return
+
+        ppid_value = ppid.strip()
+        if "@" in ppid_value:
+            url = f"https://www.paypal.com/paypalme/send?recipient={ppid_value}"
+        else:
+            url = f"https://www.paypal.me/{ppid_value}"
+
+        filename = self._qr_path(ctx, "paypal")
+        if not generate_qr(url, filename, fill_gradient=QR_GRADIENT):
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Failed to generate QR code.",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+        await self._send_qr(
+            ctx,
+            filename=filename,
+            title="PayPal QR Code",
+            color=discord.Color.blue(),
+            fields=[("PayPal", ppid_value)],
+        )
+
+    @qr_group.command(name="url", description="Create a QR with custom URL", aliases=["link"])
+    async def qr_url(self, ctx: commands.Context, *, url: str) -> None:
+
+        filename = self._qr_path(ctx, "url")
+        if not generate_qr(url, filename, fill_gradient=QR_GRADIENT):
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Failed to generate QR code.",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+        await self._send_qr(
+            ctx,
+            filename=filename,
+            title="URL QR Code",
+            description=f"**URL:** {url}",
+            color=discord.Color.blurple(),
+        )
+
+    @qr_group.command(name="esewa", description="Create a QR for eSewa", aliases=["npr"])
+    async def qr_esewa(
+        self,
+        ctx: commands.Context,
+        number: str,
+        *,
+        fullname: str,
+    ) -> None:
+
+        number_value = number.strip()
+        fullname_value = fullname.strip()
+        qr_data = f'{{"eSewa_id":"{number_value}","name":"{fullname_value}"}}'
+
+        filename = self._qr_path(ctx, "esewa")
+        if not generate_qr(qr_data, filename, fill_gradient=QR_GRADIENT):
+            await ctx.send(
+                embed=discord.Embed(
+                    description="Failed to generate QR code.",
+                    color=discord.Color.red(),
+                )
+            )
+            return
+
+        await self._send_qr(
+            ctx,
+            filename=filename,
+            title="eSewa QR Code",
+            description=f"**Name:** {fullname_value}\n**Number:** {number_value}",
+            color=discord.Color.dark_green(),
+        )
+
+
+    @commands.hybrid_command(name="thumbnail",description="Fetch the youtube video thumnail.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.describe(link="The YouTube video URL to fetch the thumbnail from.")
+    @commands.cooldown(1,5,commands.BucketType.user)
+    async def thumbnail(self,ctx:commands.Context,link:str) -> None:
+        """
+        Fetch the youtube video thumnail.
+        """
+        if len(link) > 100:
+            await ctx.reply(
+                embed=discord.Embed(
+                    description="Link too long.",
+                    color=discord.Color.red(),
+                ),
+                delete_after=5,
+                ephemeral=True
+            )
+            return
+        try:
+            pattern = r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|embed/))([\w-]{11})"
+            match = re.search(pattern, link)
+            if not match:
+                raise ValueError("Invalid YouTube URL.")
+            vid_id = match.group(1)
+            thumb_url = f"https://img.youtube.com/vi/{vid_id}/maxresdefault.jpg"
+            embed = discord.Embed(
+                description=f"## [YouTube Thumbnail]({link})",
+                color=discord.Color.red()
+            )
+            embed.set_image(url=thumb_url)
+            await ctx.reply(embed=embed, mention_author=False)
+        except Exception:
+            embed = discord.Embed(
+                description=" ❕ Error Fetching Thumbnail",
+                color=discord.Color.red()
+            )
+            await ctx.reply(embed=embed, mention_author=False, delete_after=5,ephemeral=True)
+
+
+    @commands.hybrid_command(
+            name="instagram",
+            description="Watch an Instagram reel without leaving Discord.",
+            aliases=["ig"])
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.describe(link="The Instagram reel URL to embed.")
+    async def igv(self, ctx: commands.Context, link: str) -> None:
+        """
+        Embed an Instagram reel or post.
+        """
+        pattern = r"(?:https?://)?(?:www\.)?instagram\.com/(?:reel|p)/([a-zA-Z0-9_-]+)/?"
+        match = re.search(pattern, link)
+        if not match:
+            await ctx.reply("Invalid Instagram URL.",
+                            mention_author=False,
+                            delete_after=5,
+                            ephemeral=True
+                        )
+            return
+
+        newlink = link.replace("instagram.com", "kkinstagram.com")
+        await ctx.reply(f"[Video]({newlink})", mention_author=False)
+
+    @commands.hybrid_command(
+            name="twitter",
+            description="Watch an X.com post without leaving Discord.",
+            aliases=["tweet"])
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.describe(link="The tweet URL to embed.")
+    async def twitter(self, ctx: commands.Context, link: str) -> None:
+        """
+        Embed an X.com post.
+        """
+        pattern = r"(?:https?://)?(?:www\.)?x\.com/([a-zA-Z0-9_-]+)/status/(\d+)/?"
+        match = re.search(pattern, link)
+        if not match:
+            await ctx.reply("Invalid X.com URL.",
+                            mention_author=False,
+                            delete_after=5,
+                            ephemeral=True
+                        )
+            return
+
+        newlink = link.replace("x.com", "fixupx.com")
+        await ctx.reply(f"[Post]({newlink})", mention_author=False)
+
+
+    @commands.hybrid_command(
+            name="tiktok",
+            description="Watch a TikTok video without leaving Discord.",
+            aliases=["tt"])
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.describe(link="The TikTok video URL to embed.")
+    async def tiktok(self, ctx: commands.Context, link: str) -> None:
+        """
+        Embed a TikTok video.
+        """
+        pattern = r"(?:https?://)?(?:www\.)?tiktok\.com/@([a-zA-Z0-9_-]+)/video/(\d+)/?"
+        match = re.search(pattern, link)
+        if not match:
+            await ctx.reply("Invalid TikTok URL.",
+                            mention_author=False,
+                            delete_after=5,
+                            ephemeral=True
+                        )
+            return
+
+        newlink = link.replace("tiktok.com", "tnktok.com")
+        await ctx.reply(f"[Video]({newlink})", mention_author=False)
+
+
+    @commands.hybrid_command(name="tinyurl", description="Shorten a URL using TinyURL")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    @commands.max_concurrency(20, commands.BucketType.default, wait=True)
+    async def shorten(self, ctx: commands.Context, url: str):
+        """
+        Shorten a URL using TinyURL
+        """
+        if len(url) > 150:
+            await ctx.reply(
+                embed=discord.Embed(
+                    description="URL too long. Please limit to 150 characters.",
+                    color=discord.Color.red(),
+                ),
+                delete_after=5,
+                ephemeral=True
+            )
+            return
+        url = url.lower()
+        try:
+            api_url = f"https://tinyurl.com/api-create.php?url={url}"
+            async with await self.aiohttp.get(api_url) as resp:
+                if resp.status != 200:
+                    return await ctx.reply("Failed to shorten the URL.", ephemeral=True, delete_after=5)
+                short_url = await resp.text()
+            embed = discord.Embed(
+                title="Shortened URL",
+                description=f"{short_url}",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="Original", value=url.lower(), inline=False)
+            await ctx.reply(embed=embed,mention_author=False)
+        except Exception as e:
+            await ctx.reply("An error occurred.", ephemeral=True, delete_after=5)
+            print(f"Error in shorten command: {e}")
+
+
+async def setup(bot: Amenity) -> None:
+    await bot.add_cog(UserUtility(bot))

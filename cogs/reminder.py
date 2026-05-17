@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 from api.log import log_command_error
 from api.paginator import EmbedPaginator, PaginatorHelper
 from api.parser import StringToTime
+from core.amenity import Amenity
 from core.cache import cache
 
 
@@ -181,7 +182,7 @@ class Reminder(commands.Cog):
         await ctx.send(embed=embed)
 
 
-    @commands.hybrid_group(name="reminder", description="Manage reminders")
+    @commands.hybrid_group(name="reminder", description="Manage reminders", aliases=["re"])
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reminder(self, ctx: commands.Context) -> None:
@@ -194,7 +195,7 @@ class Reminder(commands.Cog):
             )
             return
 
-    @reminder.command(name="create", description="Create a new reminder")
+    @reminder.command(name="create", description="Create a new reminder", aliases=["c"])
     @app_commands.describe(
         time="When to be reminded (e.g. 1h30m, 1h 30m, <t:1778847300:t>)",
         name="The reminder message"
@@ -255,7 +256,7 @@ class Reminder(commands.Cog):
             await log_command_error(ctx, exc)
 
 
-    @reminder.command(name="list", description="List your reminders")
+    @reminder.command(name="list", description="List your reminders", aliases=["ls"])
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
     @app_commands.allowed_installs(guilds=True, users=True)
@@ -296,7 +297,7 @@ class Reminder(commands.Cog):
 
 
 
-    @reminder.command(name="delete", description="Delete a reminder")
+    @reminder.command(name="delete", description="Delete a reminder", aliases=["del"])
     @app_commands.describe(name="The name of the reminder to delete")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
@@ -307,18 +308,31 @@ class Reminder(commands.Cog):
         if not name:
             await self._send_embed(ctx, "Reminder name is required.", ephemeral=True)
             return
-        if len(name) > 120:
-            await self._send_embed(
-                ctx,
-                "Reminder name is too long (max 120 characters).",
-                ephemeral=True,
-            )
-            return
-        with self._connect() as conn:
-            cursor = conn.execute(
-                "DELETE FROM reminders WHERE name = ? AND user_id = ?",
-                (name, ctx.author.id),
-            )
+
+        if name.startswith("id:"):
+            id_value = name[3:].strip()
+            if not id_value.isdigit():
+                await self._send_embed(ctx, "Reminder not found.", ephemeral=True)
+                return
+            reminder_id = int(id_value)
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM reminders WHERE id = ? AND user_id = ?",
+                    (reminder_id, ctx.author.id),
+                )
+        else:
+            if len(name) > 120:
+                await self._send_embed(
+                    ctx,
+                    "Reminder name is too long (max 120 characters).",
+                    ephemeral=True,
+                )
+                return
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM reminders WHERE name = ? AND user_id = ?",
+                    (name, ctx.author.id),
+                )
         if cursor.rowcount == 0:
             await self._send_embed(ctx, "Reminder not found.", ephemeral=True)
             return
@@ -342,7 +356,13 @@ class Reminder(commands.Cog):
             name = reminder["name"]
             if current_lower and current_lower not in name.lower():
                 continue
-            choices.append(app_commands.Choice(name=name, value=name))
+            if len(name) > 100:
+                display_name = f"{name[:97]}..."
+                value = f"id:{reminder['id']}"
+            else:
+                display_name = name
+                value = name
+            choices.append(app_commands.Choice(name=display_name, value=value))
             if len(choices) >= 25:
                 break
         return choices
@@ -371,7 +391,7 @@ class Reminder(commands.Cog):
             await log_command_error(ctx, exc)
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: Amenity) -> None:
     await bot.add_cog(Reminder(bot))
 
 

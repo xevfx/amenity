@@ -5,3 +5,5 @@ colorama
 pytest
 pytest-asyncio
 dpytest
+qrcode
+Pillow
