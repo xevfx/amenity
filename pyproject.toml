@@ -15,7 +15,10 @@ select = [
     "ANN", # flake8-annotations
     "TCH", # flake8-type-checking
 ]
-ignore = []
+ignore = [
+    "B008",
+    "SIM102"
+]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]

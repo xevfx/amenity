@@ -64,4 +64,4 @@ class TimeCache[T]:
         return value
 
 
-cache: TimeCache[list[dict]] = TimeCache()
+cache: TimeCache[object] = TimeCache()

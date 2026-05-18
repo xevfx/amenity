@@ -1,5 +1,7 @@
 import logging
 import os
+import pkgutil
+from pathlib import Path
 
 import discord
 from discord import app_commands
@@ -14,6 +16,7 @@ from api.log import (
     log_command_error,
     log_command_usage,
 )
+from core.help import AmenityHelpCommand
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ class Amenity(commands.Bot):
             command_prefix="",
             intents=intents,
             case_insensitive=True,
-            help_command=None,
+            help_command=AmenityHelpCommand(),
             owner_id=931347423773741097,
             strip_after_prefix=True,
             allowed_mentions=discord.AllowedMentions.none(),
@@ -53,9 +56,24 @@ class Amenity(commands.Bot):
     async def setup_hook(self) -> None:
         try:
             await self.load_extension("jishaku")
-            await self.load_extension("cogs.reminder")
         except Exception as e:
-            logger.error(f"Failed to load jishaku: {e}")
+            logger.error(f"Failed to load extension jishaku: {e}")
+
+        try:
+            await self.load_extension("core.help")
+        except Exception as e:
+            logger.error(f"Failed to load extension core.help: {e}")
+
+        cogs_path = Path(__file__).resolve().parents[1] / "cogs"
+        for module in pkgutil.iter_modules([str(cogs_path)]):
+            if module.ispkg:
+                continue
+            extension = f"cogs.{module.name}"
+            try:
+                await self.load_extension(extension)
+                print(f"Loaded extension: {extension}")
+            except Exception as e:
+                logger.error(f"Failed to load extension {extension}: {e}")
 
 
         # guild_id: int = os.getenv("GUILD_ID")
