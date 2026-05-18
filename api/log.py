@@ -1,3 +1,4 @@
+import asyncio
 import os
 import traceback
 from datetime import datetime
@@ -14,6 +15,45 @@ def _truncate_text(text: str, limit: int) -> str:
     return text[: max(0, limit - 3)] + "..."
 
 
+async def _send_exception_webhook(exception: Exception, hook: str | None = None) -> None:
+    try:
+        if hook is None:
+            hook = os.getenv("ERROR_HOOK")
+        if not hook:
+            return
+
+        error = getattr(exception, "original", exception)
+        traceback_text = "".join(
+            traceback.format_exception(type(error), error, error.__traceback__)
+        )
+        traceback_text = _truncate_text(traceback_text, 3800)
+
+        embed = discord.Embed(
+            color=discord.Color.red(),
+            timestamp=datetime.now(),
+            description=f"```py\n{traceback_text}\n```" if traceback_text else None,
+        )
+        embed.add_field(
+            name="Error",
+            value=_truncate_text(f"{type(error).__name__}: {error}", 1024),
+            inline=False,
+        )
+
+        async with aiohttp.ClientSession() as session:
+            webhook = Webhook.from_url(hook, session=session)
+            await webhook.send(embed=embed)
+    except Exception:
+        return
+
+
+def log_exception(exception: Exception) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(_send_exception_webhook(exception))
+
+
 async def UsageWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
     """
     Sends a discord.Embed object to a Discord channel via a webhook.
@@ -25,13 +65,11 @@ async def UsageWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
         bool: True if the log was sent successfully, False otherwise.
     """
     if not isinstance(embed, discord.Embed):
-        print(f"Error: Provided 'embed' is not a discord.Embed object. Type: {type(embed)}")
         return False
 
     if hook is None:
         hook = os.getenv("USAGE_HOOK")
     if not hook:
-        print("Error: USAGE_HOOK is not set.")
         return False
 
     try:
@@ -41,7 +79,7 @@ async def UsageWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
         return True
 
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        log_exception(e)
         return False
 
 
@@ -56,13 +94,11 @@ async def ErrorWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
         bool: True if the log was sent successfully, False otherwise.
     """
     if not isinstance(embed, discord.Embed):
-        print(f"Error: Provided 'embed' is not a discord.Embed object. Type: {type(embed)}")
         return False
 
     if hook is None:
         hook = os.getenv("ERROR_HOOK")
     if not hook:
-        print("Error: ERROR_HOOK is not set.")
         return False
 
     try:
@@ -72,7 +108,7 @@ async def ErrorWebhook(embed: discord.Embed, hook: str | None = None) -> bool:
         return True
 
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        log_exception(e)
         return False
 
 
@@ -120,7 +156,7 @@ async def log_command_usage(ctx: commands.Context) -> None:
         await UsageWebhook(embed)
 
     except Exception as e:
-        print(f"Error logging command usage: {e}")
+        log_exception(e)
 
 
 async def log_command_error(ctx: commands.Context, exception: Exception) -> None:
@@ -180,7 +216,7 @@ async def log_command_error(ctx: commands.Context, exception: Exception) -> None
         await ErrorWebhook(embed)
 
     except Exception as e:
-        print(f"Error logging command error: {e}")
+        log_exception(e)
 
 
 def _get_app_command_name(command: app_commands.Command | None) -> str:
@@ -250,7 +286,7 @@ async def log_app_command_usage(
         await UsageWebhook(embed)
 
     except Exception as e:
-        print(f"Error logging app command usage: {e}")
+        log_exception(e)
 
 
 async def log_app_command_error(
@@ -326,4 +362,4 @@ async def log_app_command_error(
         await ErrorWebhook(embed)
 
     except Exception as e:
-        print(f"Error logging app command error: {e}")
+        log_exception(e)

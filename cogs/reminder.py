@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from api.buttons import confirm_action
 from api.log import log_command_error
 from api.paginator import EmbedPaginator, PaginatorHelper
 from api.parser import StringToTime
@@ -16,6 +17,9 @@ from core.cache import cache
 
 
 class Reminder(commands.Cog):
+    display_name = "Reminders"
+    group_name = "Utilities"
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.db_path = os.path.abspath(
@@ -374,6 +378,22 @@ class Reminder(commands.Cog):
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reminder_nuke(self, ctx: commands.Context) -> None:
+        confirmed = await confirm_action(
+            ctx,
+            "This will delete all of your reminders. Continue?",
+            confirm_label="Delete",
+            cancel_label="Cancel",
+            confirm_style=discord.ButtonStyle.danger,
+            cancel_style=discord.ButtonStyle.secondary,
+            timeout=20.0,
+            ephemeral=True,
+            confirm_message="Deleting reminders...",
+            cancel_message="Canceled.",
+            timeout_message="Timed out.",
+        )
+        if not confirmed:
+            return
+
         try:
             with self._connect() as conn:
                 cursor = conn.execute(

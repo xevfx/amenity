@@ -2,13 +2,14 @@ import os
 import re
 from pathlib import Path
 
+import aiohttp
 import discord
 import qrcode
 from discord import app_commands
 from discord.ext import commands
 from PIL import Image, ImageColor, ImageDraw, ImageFilter
-import aiohttp
 
+from api.log import log_exception
 from core.amenity import Amenity
 
 QR_GRADIENT = ("#0B0B0D", "#1A1F2E")
@@ -154,11 +155,14 @@ def generate_qr(
         final_img.save(filename)
         return True
     except Exception as exc:
-        print(f"QR generation error: {exc}")
+        log_exception(exc)
         return False
 
 
 class UserUtility(commands.Cog):
+    display_name = "User Utility"
+    group_name = "Utilities"
+
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.aiohttp = aiohttp.ClientSession()
@@ -557,7 +561,7 @@ class UserUtility(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 15, commands.BucketType.user)
     @commands.max_concurrency(20, commands.BucketType.default, wait=True)
-    async def shorten(self, ctx: commands.Context, url: str):
+    async def shorten(self, ctx: commands.Context, url: str) -> None:
         """
         Shorten a URL using TinyURL
         """
@@ -576,7 +580,12 @@ class UserUtility(commands.Cog):
             api_url = f"https://tinyurl.com/api-create.php?url={url}"
             async with await self.aiohttp.get(api_url) as resp:
                 if resp.status != 200:
-                    return await ctx.reply("Failed to shorten the URL.", ephemeral=True, delete_after=5)
+                    await ctx.reply(
+                        "Failed to shorten the URL.",
+                        ephemeral=True,
+                        delete_after=5,
+                    )
+                    return
                 short_url = await resp.text()
             embed = discord.Embed(
                 title="Shortened URL",
@@ -587,7 +596,7 @@ class UserUtility(commands.Cog):
             await ctx.reply(embed=embed,mention_author=False)
         except Exception as e:
             await ctx.reply("An error occurred.", ephemeral=True, delete_after=5)
-            print(f"Error in shorten command: {e}")
+            log_exception(e)
 
 
 async def setup(bot: Amenity) -> None:
