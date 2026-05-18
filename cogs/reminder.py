@@ -48,6 +48,7 @@ class Reminder(commands.Cog):
         return conn
 
     def _init_db(self) -> None:
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with self._connect() as conn:
             conn.execute(
                 """

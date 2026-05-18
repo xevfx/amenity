@@ -5,10 +5,11 @@ import os
 from colorama import Fore
 from dotenv import load_dotenv
 
+load_dotenv()
+
 from core import Amenity
 
-Amenity = Amenity()
-load_dotenv()
+bot = Amenity()
 logging.basicConfig(
     level=logging.INFO,
     format=(
@@ -20,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    async with Amenity:
+    async with bot:
         os.system("clear")
-        await Amenity.start(os.getenv("TOKEN"))
+        await bot.start(os.getenv("TOKEN"))
 
 if __name__ == "__main__":
     asyncio.run(main())

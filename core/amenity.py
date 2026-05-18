@@ -32,12 +32,14 @@ class Amenity(commands.Bot):
         intents.guilds = True
         intents.messages = True
         intents.dm_messages = True
+        owner_id_env = os.getenv("OWNER_ID")
+        owner_id = int(owner_id_env) if owner_id_env and owner_id_env.isdigit() else 931347423773741097
         super().__init__(
             command_prefix="",
             intents=intents,
             case_insensitive=True,
             help_command=AmenityHelpCommand(),
-            owner_id=931347423773741097,
+            owner_id=owner_id,
             strip_after_prefix=True,
             allowed_mentions=discord.AllowedMentions.none(),
         )
