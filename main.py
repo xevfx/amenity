@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     async with Amenity:
         os.system("clear")
-        await Amenity.start(os.getenv("TOKEN"))
+        TOKEN = os.getenv("TOKEN")
+        if not TOKEN:
+            logger.error("TOKEN not found in environment variables.")
+            return
+        await Amenity.start(TOKEN)
 
 if __name__ == "__main__":
     asyncio.run(main())

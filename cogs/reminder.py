@@ -25,6 +25,7 @@ class Reminder(commands.Cog):
         self.db_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "data/reminders.db")
         )
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
         self.check_reminders.start()
         self.remind_me_about_menu = app_commands.ContextMenu(
@@ -48,6 +49,7 @@ class Reminder(commands.Cog):
         return conn
 
     def _init_db(self) -> None:
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with self._connect() as conn:
             conn.execute(
                 """
