@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import suppress
 
 import aiohttp
@@ -12,6 +13,7 @@ from core.cache import cache
 
 _PRICE_CACHE_KEY = "ltc:usd_price"
 _ETH_PRICE_CACHE_KEY = "eth:usd_price"
+_BLOCKCYPHER_TOKEN = os.getenv("BLOCKCYPHER_TOKEN")
 _SOL_PRICE_CACHE_KEY = "sol:usd_price"
 _COIN_LIST_CACHE_KEY = "coingecko:coin_list"
 _PRICE_DETAILS_CACHE_PREFIX = "price:multi:"
@@ -71,6 +73,13 @@ _FIAT_CODES = {
     "kwd",
     "omr",
 }
+
+
+def _blockcypher_url(network: str, address: str) -> str:
+    base = f"https://api.blockcypher.com/v1/{network}/main/addrs/{address}/balance"
+    if _BLOCKCYPHER_TOKEN:
+        return f"{base}?token={_BLOCKCYPHER_TOKEN}"
+    return base
 
 
 class Crypto(commands.Cog):
@@ -271,7 +280,7 @@ class Crypto(commands.Cog):
             await self._send_embed(ctx, "Usage: /balance ltc <address>", ephemeral=False)
             return
 
-        url = f"https://api.blockcypher.com/v1/ltc/main/addrs/{address}/balance"
+        url = _blockcypher_url("ltc", address)
         try:
             async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as response:
                 if response.status == 200:
@@ -339,7 +348,7 @@ class Crypto(commands.Cog):
             await self._send_embed(ctx, "Usage: /balance eth <address>", ephemeral=False)
             return
 
-        url = f"https://api.blockcypher.com/v1/eth/main/addrs/{address}/balance"
+        url = _blockcypher_url("eth", address)
         try:
             async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as response:
                 if response.status == 200:

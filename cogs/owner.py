@@ -1,6 +1,7 @@
 import os
 import sys
 from contextlib import suppress
+from pathlib import Path
 
 import discord
 from discord.ext import commands
@@ -30,7 +31,56 @@ class Owner(commands.Cog):
             size /= 1024
         return f"{size:,.2f} PB"
 
+    def _read_int(self, path: Path) -> int | None:
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if not value or value == "max":
+            return None
+        with suppress(ValueError):
+            return int(value)
+        return None
+
+    def _get_cgroup_path(self, controller: str | None) -> Path | None:
+        try:
+            lines = Path("/proc/self/cgroup").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return None
+
+        for line in lines:
+            parts = line.split(":", 2)
+            if len(parts) != 3:
+                continue
+            _, controllers, rel_path = parts
+            if controller is None and controllers == "":
+                return Path("/sys/fs/cgroup") / rel_path.lstrip("/")
+            if controller and controller in controllers.split(","):
+                return Path("/sys/fs/cgroup") / controller / rel_path.lstrip("/")
+        return None
+
+    def _read_cgroup_memory(self) -> tuple[int | None, int | None]:
+        cgroup_v2 = self._get_cgroup_path(None)
+        if cgroup_v2 is not None:
+            limit = self._read_int(cgroup_v2 / "memory.max")
+            used = self._read_int(cgroup_v2 / "memory.current")
+            if limit is not None and limit < (1 << 60) and used is not None:
+                return limit, used
+
+        cgroup_v1 = self._get_cgroup_path("memory")
+        if cgroup_v1 is not None:
+            limit = self._read_int(cgroup_v1 / "memory.limit_in_bytes")
+            used = self._read_int(cgroup_v1 / "memory.usage_in_bytes")
+            if limit is not None and limit < (1 << 60) and used is not None:
+                return limit, used
+
+        return None, None
+
     def _read_meminfo(self) -> tuple[int | None, int | None]:
+        total, used = self._read_cgroup_memory()
+        if total is not None and used is not None:
+            return total, used
+
         try:
             with open("/proc/meminfo", encoding="utf-8") as handle:
                 lines = handle.readlines()
