@@ -7,6 +7,7 @@ import discord
 import qrcode
 from discord import app_commands
 from discord.ext import commands
+from googletrans import LANGUAGES, Translator
 from PIL import Image, ImageColor, ImageDraw, ImageFilter
 from simpleeval import simple_eval
 
@@ -105,6 +106,22 @@ def _apply_glow(
     return combined
 
 
+def _resolve_language(value: str) -> tuple[str, str] | None:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    normalized = normalized.replace("_", "-")
+    if normalized in LANGUAGES:
+        return normalized, LANGUAGES[normalized]
+    reverse = {name.lower(): code for code, name in LANGUAGES.items()}
+    code = reverse.get(normalized)
+    if code:
+        return code, LANGUAGES[code]
+    return None
+
+
 def generate_qr(
     data: str,
     filename: str,
@@ -167,11 +184,22 @@ class UserUtility(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.aiohttp = aiohttp.ClientSession()
+        self.translator = Translator()
+        self.translate_to_english_menu = app_commands.ContextMenu(
+            name="translate-to-english",
+            callback=self.translate_to_english,
+            type=discord.AppCommandType.message,
+        )
+        self.bot.tree.add_command(self.translate_to_english_menu)
 
 
     def cog_unload(self) -> None:
         if not self.aiohttp.closed:
             self.bot.loop.create_task(self.aiohttp.close())
+        self.bot.tree.remove_command(
+            self.translate_to_english_menu.name,
+            type=self.translate_to_english_menu.type,
+        )
 
     @commands.hybrid_command(name="ping", description="Check the bot's latency.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -656,7 +684,8 @@ class UserUtility(commands.Cog):
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    async def math(self, ctx: commands.Context, *, expression: str):
+    @app_commands.describe(expression="The mathematical expression to evaluate.")
+    async def math(self, ctx: commands.Context, *, expression: str) -> None:
         """Performs a mathematical calculation."""
         # A very basic and somewhat unsafe way to do math.
         # For a production bot, consider using a library like 'numexpr'
@@ -669,11 +698,141 @@ class UserUtility(commands.Cog):
 
             result = simple_eval(expression)
             embed = discord.Embed(title="Math Calculation", color=discord.Color.purple())
-            embed.add_field(name=f"Expression", value=f"```\n{expression}\n```", inline=False)
-            embed.add_field(name=f"Result", value=f"```\n{result}\n```", inline=False)
+            embed.add_field(name="Expression", value=f"```\n{expression}\n```", inline=False)
+            embed.add_field(name="Result", value=f"```\n{result}\n```", inline=False)
+            await ctx.send(embed=embed)
+        except Exception:
+            await ctx.send("An error occurred")
+
+    @commands.hybrid_command(name="binary", description="Convert text to binary or binary to text.")
+    @app_commands.describe(message="The text or binary to convert.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def binary(self, ctx: commands.Context, *, message: str) -> None:
+        """
+        Converts text to binary or binary to text.
+        The command automatically detects the input type.
+        """
+        # Check if the input is binary or text
+        if all(c in '01 ' for c in message):
+            # Binary to Text
+            binary_values = message.split()
+            ascii_string = ""
+            for binary_value in binary_values:
+                an_integer = int(binary_value, 2)
+                ascii_character = chr(an_integer)
+                ascii_string += ascii_character
+
+            if len(ascii_string) > 2000:
+                await ctx.send("The output is too long to be sent in a message.")
+                return
+
+            embed = discord.Embed(title="Binary to Text Conversion", color=0xADD8E6)
+            embed.add_field(name=" Input (Binary)", value=f"```\n{message}\n```", inline=False)
+            embed.add_field(name=" Output (Text)", value=f"```\n{ascii_string}\n```", inline=False)
+            await ctx.send(embed=embed)
+
+        else:
+            binary_result = ' '.join(format(ord(char), '08b') for char in message)
+
+            if len(binary_result) > 2000:
+                await ctx.send("The output is too long to be sent in a message.")
+                return
+
+            embed = discord.Embed(title="Text to Binary Conversion", color=discord.Color.blue())
+            embed.add_field(
+                name="Input (Text)",
+                value=f"```\n{message}\n```",
+                inline=False,
+            )
+            embed.add_field(
+                name="Output (Binary)",
+                value=f"```\n{binary_result}\n```",
+                inline=False,
+            )
+            await ctx.send(embed=embed)
+
+
+    async def translate_to_english(
+        self,
+        interaction: discord.Interaction,
+        message: discord.Message,
+    ) -> None:
+        text = message.content.strip()
+        if not text:
+            await interaction.response.send_message(
+                "This message has no text to translate.",
+                ephemeral=True,
+            )
+            return
+        try:
+            translated = await self.translator.translate(text, dest="en")
+            source_lang = LANGUAGES.get(translated.src, "Unknown")
+            embed = discord.Embed(
+                title="Translation to English",
+                color=discord.Color.gold(),
+            )
+            embed.add_field(
+                name=f"Original ({source_lang.title()})",
+                value=f"```\n{text}\n```",
+                inline=False,
+            )
+            embed.add_field(
+                name="Translated (English)",
+                value=f"```\n{translated.text}\n```",
+                inline=False,
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception:
+            await interaction.response.send_message(
+                "An error occurred during translation",
+                ephemeral=True,
+            )
+
+
+    @commands.hybrid_command(name="translate", description="Translate text to a target language.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.describe(
+        to="Target language (name or code, e.g., Spanish or es). Defaults to English.",
+        text="The text to translate.",
+    )
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.max_concurrency(50, commands.BucketType.default, wait=True)
+    async def translate(self, ctx: commands.Context, to: str = None, *, text: str) -> None:
+        """Translates the given text to the requested language."""
+        target = to or "en"
+        resolved = _resolve_language(target)
+        if resolved is None:
+            await ctx.send(
+                "Unknown language "
+                f"`{target}`. Use a language name or code (e.g., `Spanish` or `es`)."
+            )
+            return
+        dest_code, dest_name = resolved
+        try:
+            # The translator can sometimes be unreliable, so we wrap it in a try-except
+            translated = await self.translator.translate(text, dest=dest_code)
+            source_lang = LANGUAGES.get(translated.src, "Unknown")
+
+            embed = discord.Embed(
+                title=f"Translation to {dest_name.title()}",
+                color=discord.Color.gold(),
+            )
+            embed.add_field(
+                name=f"Original ({source_lang.title()})",
+                value=f"```\n{text}\n```",
+                inline=False,
+            )
+            embed.add_field(
+                name=f"Translated ({dest_name.title()})",
+                value=f"```\n{translated.text}\n```",
+                inline=False,
+            )
             await ctx.send(embed=embed)
         except Exception as e:
-            await ctx.send(f"An error occurred")
+            #await ctx.send("An error occurred during translation")
+            await ctx.send(e)
 
 
 async def setup(bot: Amenity) -> None:
