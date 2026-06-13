@@ -47,8 +47,7 @@ class BotLinks:
     def __init__(self, support_url: str | None = None, invite_url: str | None = None) -> None:
         self.support_url = support_url or "https://discord.gg/x4kaVDcubT"
         self.invite_url = (
-            invite_url
-            or "https://discord.com/oauth2/authorize?client_id=1455170105666306113"
+            invite_url or "https://discord.com/oauth2/authorize?client_id=1455170105666306113"
         )
 
     def support(self, label: str = "Support Server", emoji: str = "🎗️") -> View:
@@ -183,12 +182,12 @@ async def confirm_action(
 
     return view.value is True
 
+
 # bot_links = BotLinks(
 #     support_url="https://discord.gg/your-server",
 #     invite_url="https://discord.com/oauth2/authorize?client_id=123456789&scope=bot"
 # )
 # SupportServerLink = bot_links.support()
-
 
 
 # Usage:

@@ -146,9 +146,7 @@ async def _build_command_embed(
         visible_subcommands = []
         for sub in sorted(command.commands, key=lambda c: c.name):
             if await index.can_see_command(sub, author):
-                visible_subcommands.append(
-                    f"`{sub.name}` - {_get_command_description(sub)}"
-                )
+                visible_subcommands.append(f"`{sub.name}` - {_get_command_description(sub)}")
         if visible_subcommands:
             embed.add_field(
                 name="Subcommands",
@@ -201,9 +199,7 @@ class HelpIndex:
             if not await self.can_see_cog(cog, user):
                 continue
             commands_list = [
-                cmd
-                for cmd in cog.walk_commands()
-                if await self.can_see_command(cmd, user)
+                cmd for cmd in cog.walk_commands() if await self.can_see_command(cmd, user)
             ]
             if commands_list:
                 result[cog] = sorted(commands_list, key=lambda c: c.qualified_name)
@@ -314,13 +310,9 @@ class HelpView(discord.ui.View):
         grouped: dict[str, list[str]] = {}
         for cog, commands_list in self.mapping.items():
             group = _cog_group_name(cog)
-            grouped.setdefault(group, []).append(
-                f"{_cog_display_name(cog)} ({len(commands_list)})"
-            )
+            grouped.setdefault(group, []).append(f"{_cog_display_name(cog)} ({len(commands_list)})")
         if self.uncategorized:
-            grouped.setdefault("other", []).append(
-                f"Uncategorized ({len(self.uncategorized)})"
-            )
+            grouped.setdefault("other", []).append(f"Uncategorized ({len(self.uncategorized)})")
 
         for group_name in sorted(grouped.keys()):
             label = group_name.replace("_", " ").title()
@@ -732,7 +724,6 @@ class AmenityHelpCommand(commands.HelpCommand):
 
     async def command_not_found(self, string: str) -> str:
         return f"No command called `{string}` found."
-
 
 
 class HelpCog(commands.Cog):

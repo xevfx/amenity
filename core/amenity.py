@@ -6,7 +6,7 @@ from pathlib import Path
 import discord
 from discord import app_commands
 
-#import asyncio
+# import asyncio
 from discord.ext import commands
 
 from api.buttons import BotLinks
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 os.environ["JISHAKU_HIDE"] = "True"
 os.environ["JISHAKU_NO_UNDERSCORE"] = "True"
 os.environ["JISHAKU_FORCE_PAGINATOR"] = "True"
+
 
 class Amenity(commands.Bot):
     def __init__(self) -> None:
@@ -42,15 +43,11 @@ class Amenity(commands.Bot):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-
     async def on_connect(self) -> None:
         """Called when bot connects to Discord gateway."""
         await self.change_presence(
             status=discord.Status.idle,
-            activity=discord.Activity(
-                type=discord.ActivityType.listening,
-                name="/help"
-            )
+            activity=discord.Activity(type=discord.ActivityType.listening, name="/help"),
         )
 
     async def setup_hook(self) -> None:
@@ -75,7 +72,6 @@ class Amenity(commands.Bot):
             except Exception as e:
                 logger.error(f"Failed to load extension {extension}: {e}")
 
-
         # guild_id: int = os.getenv("GUILD_ID")
         # if guild_id:
         #     guild = discord.Object(id=int(guild_id))
@@ -97,8 +93,7 @@ class Amenity(commands.Bot):
         #     f"Logged in as {self.user} (ID: {self.user.id}) | install scope: {install_scope}"
         # )
         logger.info(f"[+] | LOGGED IN AS {self.user}")
-        #logger.info(f"[+] | WATCHING {self.users}")
-
+        # logger.info(f"[+] | WATCHING {self.users}")
 
     async def on_command_error(
         self,
@@ -113,7 +108,7 @@ class Amenity(commands.Bot):
                 f"Command on cooldown. Try again after {exception.retry_after:.2f} seconds.",
                 ephemeral=True,
                 mention_author=False,
-                delete_after=5
+                delete_after=5,
             )
             return
 
@@ -126,7 +121,7 @@ class Amenity(commands.Bot):
                 "This command can only be used in a server.",
                 ephemeral=True,
                 mention_author=False,
-                delete_after=5
+                delete_after=5,
             )
             return
         if isinstance(exception, commands.MissingRequiredArgument):
@@ -138,7 +133,7 @@ class Amenity(commands.Bot):
                 "You don't have permission to use this command.",
                 ephemeral=True,
                 mention_author=False,
-                delete_after=5
+                delete_after=5,
             )
             return
 
@@ -151,7 +146,7 @@ class Amenity(commands.Bot):
                 "This command is currently being used by too many people. Please try again later.",
                 ephemeral=True,
                 mention_author=False,
-                delete_after=5
+                delete_after=5,
             )
             return
         await log_command_error(context, exception)
@@ -194,14 +189,12 @@ class Amenity(commands.Bot):
             except discord.HTTPException:
                 pass  # Interaction may have expired
 
-
         if isinstance(exception, app_commands.CommandOnCooldown):
             embed = discord.Embed(
                 description=(
-                    "Command on cooldown. Try again after "
-                    f"{exception.retry_after:.2f} seconds."
+                    f"Command on cooldown. Try again after {exception.retry_after:.2f} seconds."
                 ),
-                color=discord.Color.red()
+                color=discord.Color.red(),
             )
             await send_error(embed, ephemeral=True)
             return
@@ -209,15 +202,14 @@ class Amenity(commands.Bot):
         if isinstance(exception, app_commands.TransformerError):
             embed = discord.Embed(
                 description="Invalid argument provided. Please check your input.",
-                color=discord.Color.red()
+                color=discord.Color.red(),
             )
             await send_error(embed, ephemeral=True)
             return
 
         if isinstance(exception, app_commands.NoPrivateMessage):
             embed = discord.Embed(
-                description="This command can only be used in a server.",
-                color=discord.Color.red()
+                description="This command can only be used in a server.", color=discord.Color.red()
             )
             await send_error(embed, ephemeral=True)
             return
@@ -225,19 +217,18 @@ class Amenity(commands.Bot):
         if isinstance(exception, app_commands.CheckFailure):
             embed = discord.Embed(
                 description="You don't have permission to use this command.",
-                color=discord.Color.red()
+                color=discord.Color.red(),
             )
             await send_error(embed, ephemeral=True)
             return
 
         embed = discord.Embed(
             description="An unexpected error occurred. Please try again later.",
-            color=discord.Color.red()
+            color=discord.Color.red(),
         )
         await send_error(embed, ephemeral=True, view=BotLinks().support())
         await log_app_command_error(interaction, exception)
         raise exception
-
 
     async def invoke_help_command(self, ctx: commands.Context) -> None:
         """Send help for the current command."""

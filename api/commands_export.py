@@ -100,9 +100,7 @@ def _serialize_app_command(command: app_commands.Command) -> dict:
 
 def build_commands_payload(bot: commands.Bot) -> dict:
     prefix_commands = [_serialize_prefix_command(cmd) for cmd in bot.walk_commands()]
-    app_commands_list = [
-        _serialize_app_command(cmd) for cmd in bot.tree.walk_commands()
-    ]
+    app_commands_list = [_serialize_app_command(cmd) for cmd in bot.tree.walk_commands()]
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "counts": {

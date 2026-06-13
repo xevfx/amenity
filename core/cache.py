@@ -39,9 +39,7 @@ class TimeCache[T]:
     def clear(self) -> None:
         self._store.clear()
 
-    def get_or_set(
-        self, key: str, factory: Callable[[], T], ttl: float | None = None
-    ) -> T:
+    def get_or_set(self, key: str, factory: Callable[[], T], ttl: float | None = None) -> T:
         value = self.get(key, _MISSING)
         if value is not _MISSING:
             return value  # type: ignore[return-value]

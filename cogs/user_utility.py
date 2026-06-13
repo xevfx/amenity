@@ -192,7 +192,6 @@ class UserUtility(commands.Cog):
         )
         self.bot.tree.add_command(self.translate_to_english_menu)
 
-
     def cog_unload(self) -> None:
         if not self.aiohttp.closed:
             self.bot.loop.create_task(self.aiohttp.close())
@@ -305,7 +304,7 @@ class UserUtility(commands.Cog):
                     color=discord.Color.red(),
                 ),
                 delete_after=5,
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
@@ -391,7 +390,7 @@ class UserUtility(commands.Cog):
                     color=discord.Color.red(),
                 ),
                 delete_after=5,
-                ephemeral=True
+                ephemeral=True,
             )
             return
         if note and len(note) > 100:
@@ -401,7 +400,7 @@ class UserUtility(commands.Cog):
                     color=discord.Color.red(),
                 ),
                 delete_after=5,
-                ephemeral=True
+                ephemeral=True,
             )
             return
         url = f"upi://pay?pa={upi_value}&pn=RecipientName"
@@ -440,7 +439,7 @@ class UserUtility(commands.Cog):
                     color=discord.Color.red(),
                 ),
                 delete_after=5,
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
@@ -520,13 +519,12 @@ class UserUtility(commands.Cog):
             color=discord.Color.dark_green(),
         )
 
-
-    @commands.hybrid_command(name="thumbnail",description="Fetch the youtube video thumnail.")
+    @commands.hybrid_command(name="thumbnail", description="Fetch the youtube video thumnail.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The YouTube video URL to fetch the thumbnail from.")
-    @commands.cooldown(1,5,commands.BucketType.user)
-    async def thumbnail(self,ctx:commands.Context,link:str) -> None:
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def thumbnail(self, ctx: commands.Context, link: str) -> None:
         """
         Fetch the youtube video thumnail.
         """
@@ -537,7 +535,7 @@ class UserUtility(commands.Cog):
                     color=discord.Color.red(),
                 ),
                 delete_after=5,
-                ephemeral=True
+                ephemeral=True,
             )
             return
         try:
@@ -548,23 +546,21 @@ class UserUtility(commands.Cog):
             vid_id = match.group(1)
             thumb_url = f"https://img.youtube.com/vi/{vid_id}/maxresdefault.jpg"
             embed = discord.Embed(
-                description=f"## [YouTube Thumbnail]({link})",
-                color=discord.Color.red()
+                description=f"## [YouTube Thumbnail]({link})", color=discord.Color.red()
             )
             embed.set_image(url=thumb_url)
             await ctx.reply(embed=embed, mention_author=False)
         except Exception:
             embed = discord.Embed(
-                description=" ❕ Error Fetching Thumbnail",
-                color=discord.Color.red()
+                description=" ❕ Error Fetching Thumbnail", color=discord.Color.red()
             )
-            await ctx.reply(embed=embed, mention_author=False, delete_after=5,ephemeral=True)
-
+            await ctx.reply(embed=embed, mention_author=False, delete_after=5, ephemeral=True)
 
     @commands.hybrid_command(
-            name="instagram",
-            description="Watch an Instagram reel without leaving Discord.",
-            aliases=["ig"])
+        name="instagram",
+        description="Watch an Instagram reel without leaving Discord.",
+        aliases=["ig"],
+    )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The Instagram reel URL to embed.")
@@ -575,20 +571,19 @@ class UserUtility(commands.Cog):
         pattern = r"(?:https?://)?(?:www\.)?instagram\.com/(?:reel|p)/([a-zA-Z0-9_-]+)/?"
         match = re.search(pattern, link)
         if not match:
-            await ctx.reply("Invalid Instagram URL.",
-                            mention_author=False,
-                            delete_after=5,
-                            ephemeral=True
-                        )
+            await ctx.reply(
+                "Invalid Instagram URL.", mention_author=False, delete_after=5, ephemeral=True
+            )
             return
 
         newlink = link.replace("instagram.com", "kkinstagram.com")
         await ctx.reply(f"[Video]({newlink})", mention_author=False)
 
     @commands.hybrid_command(
-            name="twitter",
-            description="Watch an X.com post without leaving Discord.",
-            aliases=["tweet"])
+        name="twitter",
+        description="Watch an X.com post without leaving Discord.",
+        aliases=["tweet"],
+    )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The tweet URL to embed.")
@@ -599,21 +594,17 @@ class UserUtility(commands.Cog):
         pattern = r"(?:https?://)?(?:www\.)?x\.com/([a-zA-Z0-9_-]+)/status/(\d+)/?"
         match = re.search(pattern, link)
         if not match:
-            await ctx.reply("Invalid X.com URL.",
-                            mention_author=False,
-                            delete_after=5,
-                            ephemeral=True
-                        )
+            await ctx.reply(
+                "Invalid X.com URL.", mention_author=False, delete_after=5, ephemeral=True
+            )
             return
 
         newlink = link.replace("x.com", "fixupx.com")
         await ctx.reply(f"[Post]({newlink})", mention_author=False)
 
-
     @commands.hybrid_command(
-            name="tiktok",
-            description="Watch a TikTok video without leaving Discord.",
-            aliases=["tt"])
+        name="tiktok", description="Watch a TikTok video without leaving Discord.", aliases=["tt"]
+    )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The TikTok video URL to embed.")
@@ -624,16 +615,13 @@ class UserUtility(commands.Cog):
         pattern = r"(?:https?://)?(?:www\.)?tiktok\.com/@([a-zA-Z0-9_-]+)/video/(\d+)/?"
         match = re.search(pattern, link)
         if not match:
-            await ctx.reply("Invalid TikTok URL.",
-                            mention_author=False,
-                            delete_after=5,
-                            ephemeral=True
-                        )
+            await ctx.reply(
+                "Invalid TikTok URL.", mention_author=False, delete_after=5, ephemeral=True
+            )
             return
 
         newlink = link.replace("tiktok.com", "tnktok.com")
         await ctx.reply(f"[Video]({newlink})", mention_author=False)
-
 
     @commands.hybrid_command(name="tinyurl", description="Shorten a URL using TinyURL")
     @app_commands.allowed_installs(guilds=True, users=True)
@@ -651,7 +639,7 @@ class UserUtility(commands.Cog):
                     color=discord.Color.red(),
                 ),
                 delete_after=5,
-                ephemeral=True
+                ephemeral=True,
             )
             return
         url = url.lower()
@@ -667,17 +655,13 @@ class UserUtility(commands.Cog):
                     return
                 short_url = await resp.text()
             embed = discord.Embed(
-                title="Shortened URL",
-                description=f"{short_url}",
-                color=discord.Color.blue()
+                title="Shortened URL", description=f"{short_url}", color=discord.Color.blue()
             )
             embed.add_field(name="Original", value=url.lower(), inline=False)
-            await ctx.reply(embed=embed,mention_author=False)
+            await ctx.reply(embed=embed, mention_author=False)
         except Exception as e:
             await ctx.reply("An error occurred.", ephemeral=True, delete_after=5)
             log_exception(e)
-
-
 
     @commands.hybrid_command(name="math", description="Perform a math calculation.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -714,7 +698,7 @@ class UserUtility(commands.Cog):
         The command automatically detects the input type.
         """
         # Check if the input is binary or text
-        if all(c in '01 ' for c in message):
+        if all(c in "01 " for c in message):
             # Binary to Text
             binary_values = message.split()
             ascii_string = ""
@@ -733,7 +717,7 @@ class UserUtility(commands.Cog):
             await ctx.send(embed=embed)
 
         else:
-            binary_result = ' '.join(format(ord(char), '08b') for char in message)
+            binary_result = " ".join(format(ord(char), "08b") for char in message)
 
             if len(binary_result) > 2000:
                 await ctx.send("The output is too long to be sent in a message.")
@@ -751,7 +735,6 @@ class UserUtility(commands.Cog):
                 inline=False,
             )
             await ctx.send(embed=embed)
-
 
     async def translate_to_english(
         self,
@@ -788,7 +771,6 @@ class UserUtility(commands.Cog):
                 "An error occurred during translation",
                 ephemeral=True,
             )
-
 
     @commands.hybrid_command(name="translate", description="Translate text to a target language.")
     @app_commands.allowed_installs(guilds=True, users=True)
@@ -831,7 +813,7 @@ class UserUtility(commands.Cog):
             )
             await ctx.send(embed=embed)
         except Exception as e:
-            #await ctx.send("An error occurred during translation")
+            # await ctx.send("An error occurred during translation")
             await ctx.send(e)
 
 

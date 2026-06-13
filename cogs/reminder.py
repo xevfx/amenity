@@ -35,7 +35,6 @@ class Reminder(commands.Cog):
         )
         self.bot.tree.add_command(self.remind_me_about_menu)
 
-
     def cog_unload(self) -> None:
         self.check_reminders.cancel()
         self.bot.tree.remove_command(
@@ -119,13 +118,11 @@ class Reminder(commands.Cog):
         name = self._dedupe_reminder_name(user_id, name)
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO reminders (user_id, name, remind_at, created_at) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO reminders (user_id, name, remind_at, created_at) VALUES (?, ?, ?, ?)",
                 (user_id, name, remind_at, created_at),
             )
         self._invalidate_user_cache(user_id)
         return name
-
 
     async def _send_due_reminders(self, rows: Iterable[sqlite3.Row]) -> None:
         for row in rows:
@@ -140,16 +137,16 @@ class Reminder(commands.Cog):
                     user = None
             if user is not None:
                 with suppress(discord.HTTPException):
-                    await user.send(embed=discord.Embed(
-                        title="Reminder",
-                        description=f"Reminding you about:\n> {name}",
-                        timestamp=discord.utils.utcnow()
-                    ))
+                    await user.send(
+                        embed=discord.Embed(
+                            title="Reminder",
+                            description=f"Reminding you about:\n> {name}",
+                            timestamp=discord.utils.utcnow(),
+                        )
+                    )
             with self._connect() as conn:
                 conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
             self._invalidate_user_cache(user_id)
-
-
 
     @tasks.loop(seconds=30)
     async def check_reminders(self) -> None:
@@ -163,11 +160,9 @@ class Reminder(commands.Cog):
         if rows:
             await self._send_due_reminders(rows)
 
-
     @check_reminders.before_loop
     async def check_reminders_before_loop(self) -> None:
         await self.bot.wait_until_ready()
-
 
     async def _send_embed(
         self,
@@ -187,7 +182,6 @@ class Reminder(commands.Cog):
             return
         await ctx.send(embed=embed)
 
-
     @commands.hybrid_group(name="reminder", description="Manage reminders", aliases=["re"])
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -204,7 +198,7 @@ class Reminder(commands.Cog):
     @reminder.command(name="create", description="Create a new reminder", aliases=["c"])
     @app_commands.describe(
         time="When to be reminded (e.g. 1h30m, 1h 30m, <t:1778847300:t>)",
-        name="The reminder message"
+        name="The reminder message",
     )
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
@@ -261,7 +255,6 @@ class Reminder(commands.Cog):
             await self._send_embed(ctx, "Error creating reminder", ephemeral=True)
             await log_command_error(ctx, exc)
 
-
     @reminder.command(name="list", description="List your reminders", aliases=["ls"])
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
@@ -300,8 +293,6 @@ class Reminder(commands.Cog):
     ) -> None:
         modal = ReminderContextModal(self, message)
         await interaction.response.send_modal(modal)
-
-
 
     @reminder.command(name="delete", description="Delete a reminder", aliases=["del"])
     @app_commands.describe(name="The name of the reminder to delete")
@@ -373,7 +364,6 @@ class Reminder(commands.Cog):
                 break
         return choices
 
-
     @reminder.command(name="nuke", description="Nuke all your reminders")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
@@ -403,11 +393,7 @@ class Reminder(commands.Cog):
                     (ctx.author.id,),
                 )
             self._invalidate_user_cache(ctx.author.id)
-            await self._send_embed(
-                ctx,
-                f"Deleted {cursor.rowcount} reminders.",
-                ephemeral=True
-            )
+            await self._send_embed(ctx, f"Deleted {cursor.rowcount} reminders.", ephemeral=True)
         except Exception as exc:
             await self._send_embed(ctx, "Error deleting reminders.", ephemeral=True)
             await log_command_error(ctx, exc)

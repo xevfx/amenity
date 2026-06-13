@@ -84,15 +84,11 @@ class ServerUtility(commands.Cog):
             sec_lines = []
             verification = guild.verification_level
             if verification is not None:
-                sec_lines.append(
-                    f"🔒 **Verification**: {str(verification).title()}"
-                )
+                sec_lines.append(f"🔒 **Verification**: {str(verification).title()}")
             boosts = guild.premium_subscription_count
             tier = guild.premium_tier
             if boosts:
-                sec_lines.append(
-                    f"💎 **Boosts**: {boosts} (Level {tier})"
-                )
+                sec_lines.append(f"💎 **Boosts**: {boosts} (Level {tier})")
             if sec_lines:
                 embed.add_field(
                     name="Security & Boosts",
@@ -134,11 +130,8 @@ class ServerUtility(commands.Cog):
                     feat_str += f" and {len(features) - 5} more..."
                 embed.add_field(name="Features", value=feat_str, inline=True)
 
-        embed.set_footer(
-            text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url
-        )
+        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
         return embed
-
 
     @commands.hybrid_group(
         name="server", description="Server utility commands", invoke_without_command=True
@@ -162,45 +155,51 @@ class ServerUtility(commands.Cog):
             )
             return
 
-
         c_at = int(ctx.guild.created_at.timestamp())
 
         guild: discord.Guild = ctx.guild
 
-        embed = discord.Embed(color=discord.Color.dark_magenta()).set_author(
-          name="Server info:",
-          icon_url=guild.me.display_avatar.url
-          if guild.icon is None else guild.icon.url).set_footer(
-            text=f"Requested By {ctx.author}",
-            icon_url=ctx.author.avatar.url
-            if ctx.author.avatar else ctx.author.default_avatar.url)
+        embed = (
+            discord.Embed(color=discord.Color.dark_magenta())
+            .set_author(
+                name="Server info:",
+                icon_url=guild.me.display_avatar.url if guild.icon is None else guild.icon.url,
+            )
+            .set_footer(
+                text=f"Requested By {ctx.author}",
+                icon_url=ctx.author.avatar.url
+                if ctx.author.avatar
+                else ctx.author.default_avatar.url,
+            )
+        )
         if guild.icon is not None:
-          embed.set_thumbnail(url=guild.icon.url)
-          embed.timestamp = discord.utils.utcnow()
+            embed.set_thumbnail(url=guild.icon.url)
+            embed.timestamp = discord.utils.utcnow()
 
         embed.add_field(
             name="**__About__**",
-            value=
-            f"""
+            value=f"""
             **Name : ** {"N/A" if not guild.name else guild.name}\n
             **ID :** {guild.id}\n**Created At : ** <t:{c_at}:F>
             """,
-            inline=False)
+            inline=False,
+        )
         ftrs = ""
         if guild.features:
-                    ftrs = ("\n").join([f"> {feature.replace('_',' ').title()}"
-                                        for feature in guild.features])
+            ftrs = ("\n").join(
+                [f"> {feature.replace('_', ' ').title()}" for feature in guild.features]
+            )
 
         embed.add_field(
+            name="**__Features__**",
+            value=f"{
+                ftrs
+                if ftrs and len(ftrs) <= 1024
+                else (ftrs[0:1000] + 'and more...' if ftrs else 'None')
+            }",
+        )
 
-          name="**__Features__**",
-
-          value=f"{ftrs if ftrs and len(ftrs) <= 1024 else (ftrs[0:1000] + 'and more...'
-                                                            if ftrs else 'None')}")
-
-
-        await ctx.reply(embed=embed,mention_author=False)
-
+        await ctx.reply(embed=embed, mention_author=False)
 
     @commands.hybrid_group(
         name="role", description="Role utility commands", invoke_without_command=True
@@ -245,7 +244,6 @@ class ServerUtility(commands.Cog):
             embed.add_field(name="Hoisted (Separated)", value="Yes", inline=True)
         embed.add_field(name="Position", value=str(role.position), inline=True)
 
-
         # Key permissions
         enabled_perms = [
             perm_name.replace("_", " ").title()
@@ -258,9 +256,7 @@ class ServerUtility(commands.Cog):
                 perms_str += f" and {len(enabled_perms) - 10} more..."
             embed.add_field(name="Key Permissions", value=perms_str, inline=False)
 
-        embed.set_footer(
-            text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url
-        )
+        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.hybrid_group(
@@ -272,16 +268,12 @@ class ServerUtility(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
 
-    @member_group.command(
-        name="info", description="Get information about a specific member."
-    )
+    @member_group.command(name="info", description="Get information about a specific member.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.describe(user="The member to fetch information for.")
     @commands.cooldown(1, 5, commands.BucketType.user)
-    async def member_info(
-        self, ctx: commands.Context, user: discord.Member = None
-    ) -> None:
+    async def member_info(self, ctx: commands.Context, user: discord.Member = None) -> None:
         # Default to author
         target = user or ctx.author
 
@@ -313,12 +305,8 @@ class ServerUtility(commands.Cog):
                 joined_str = f"<t:{joined_timestamp}:F> (<t:{joined_timestamp}:R>)"
                 embed.add_field(name="Joined Server", value=joined_str, inline=False)
 
-
-        embed.set_footer(
-            text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url
-        )
+        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
         await ctx.reply(embed=embed, mention_author=False)
-
 
     @commands.hybrid_group(
         name="channel", description="Channel utility commands", invoke_without_command=True
@@ -413,9 +401,7 @@ class ServerUtility(commands.Cog):
         # Bitrate / User Limit (Voice)
         if isinstance(target, discord.VoiceChannel):
             if target.bitrate is not None and target.bitrate > 0:
-                embed.add_field(
-                    name="Bitrate", value=f"{target.bitrate // 1000} kbps", inline=True
-                )
+                embed.add_field(name="Bitrate", value=f"{target.bitrate // 1000} kbps", inline=True)
             if target.user_limit is not None and target.user_limit > 0:
                 embed.add_field(
                     name="User Limit",
@@ -430,13 +416,9 @@ class ServerUtility(commands.Cog):
             if target.owner_id:
                 embed.add_field(name="Owner", value=f"<@{target.owner_id}>", inline=True)
             if target.message_count is not None:
-                embed.add_field(
-                    name="Messages Count", value=str(target.message_count), inline=True
-                )
+                embed.add_field(name="Messages Count", value=str(target.message_count), inline=True)
 
-        embed.set_footer(
-            text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url
-        )
+        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
         await ctx.reply(embed=embed, mention_author=False)
 
 

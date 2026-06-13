@@ -18,13 +18,12 @@ class Fun(commands.Cog):
     display_name = "Fun"
     group_name = "Fun"
 
-
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
         self.aiohttp = aiohttp.ClientSession()
         self.supported_countries = {}
         for locale in AVAILABLE_LOCALES:
-            parts = locale.split('_')
+            parts = locale.split("_")
             if len(parts) > 1:
                 country_code = parts[1].upper()
                 self.supported_countries[country_code] = locale
@@ -94,7 +93,6 @@ class Fun(commands.Cog):
         title = entry.get("word", query).title()
         phonetic = entry.get("phonetic")
         meanings = entry.get("meanings") or []
-
 
         embed = discord.Embed(
             title=f"Dictionary: {title}",
@@ -186,13 +184,12 @@ class Fun(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-
     @commands.hybrid_command(name="gayrate", description="Check how gay somone is (for fun).")
     @app_commands.describe(user="Optional: The user to check. Defaults to yourself.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
-    async def gayrate(self, ctx: commands.Context, user: discord.User | None = None):
+    async def gayrate(self, ctx: commands.Context, user: discord.User | None = None) -> None:
         target = user or ctx.author
         rate = random.randint(0, 100)
         await self._send_embed(
@@ -200,16 +197,19 @@ class Fun(commands.Cog):
             description=f"{target.mention} is {rate}% gay!",
             title="Gay Rate",
             color=discord.Color.pink(),
-            ephemeral=True
+            ephemeral=True,
         )
 
-
-    @commands.hybrid_command(name="faker", description="Generate a fake name and address by country name or code.")
-    @app_commands.describe(country="Optional: Country name or 2-letter code (e.g. Nepal, India, US, IN)")
+    @commands.hybrid_command(
+        name="faker", description="Generate a fake name and address by country name or code."
+    )
+    @app_commands.describe(
+        country="Optional: Country name or 2-letter code (e.g. Nepal, India, US, IN)"
+    )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def faker_cmd(self, ctx: commands.Context, country: str | None = None):
+    async def faker_cmd(self, ctx: commands.Context, country: str | None = None) -> None:
         chosen_locale = None
         display_code = ""
         display_name = ""
@@ -239,8 +239,11 @@ class Fun(commands.Cog):
                 # Direct alert using native ctx.send
                 embed_err = discord.Embed(
                     title="Country Not Found",
-                    description=f"Could not find a valid or supported country matching `{country}`. Using a random country instead.",
-                    color=discord.Color.orange()
+                    description=(
+                        f"Could not find a valid or supported country matching `{country}`. "
+                        "Using a random country instead."
+                    ),
+                    color=discord.Color.orange(),
                 )
                 if ctx.interaction and not ctx.interaction.response.is_done():
                     await ctx.interaction.response.send_message(embed=embed_err, ephemeral=True)
@@ -286,18 +289,17 @@ class Fun(commands.Cog):
         )
 
         embed = discord.Embed(
-            title="📍 Generated Address Info",
-            description=description,
-            color=discord.Color.teal()
+            title="📍 Generated Address Info", description=description, color=discord.Color.teal()
         )
         await ctx.send(embed=embed)
 
-
-    @commands.hybrid_command(name="dadjoke", description="Get a random dad joke from icanhazdadjoke.")
+    @commands.hybrid_command(
+        name="dadjoke", description="Get a random dad joke from icanhazdadjoke."
+    )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def dad_joke_cmd(self, ctx: commands.Context):
+    async def dad_joke_cmd(self, ctx: commands.Context) -> None:
 
         async with aiohttp.ClientSession() as session:
             headers = {"Accept": "application/json"}
@@ -305,39 +307,44 @@ class Fun(commands.Cog):
                 if resp.status == 200:
                     data = await resp.json()
                     embed = discord.Embed(
-                        title="👨 Dad Joke",
-                        description=data["joke"],
-                        color=discord.Color.orange()
+                        title="👨 Dad Joke", description=data["joke"], color=discord.Color.orange()
                     )
                 else:
-                    embed = discord.Embed(title="❌ API Error", description="Failed to retrieve a dad joke.", color=discord.Color.red())
+                    embed = discord.Embed(
+                        title="❌ API Error",
+                        description="Failed to retrieve a dad joke.",
+                        color=discord.Color.red(),
+                    )
 
         await ctx.send(embed=embed)
-
-
-
-
 
     @commands.hybrid_command(name="fact", description="Get a random completely useless fact.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def useless_fact_cmd(self, ctx: commands.Context):
+    async def useless_fact_cmd(self, ctx: commands.Context) -> None:
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://uselessfacts.jsph.pl/api/v2/facts/random?language=en") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    embed = discord.Embed(
-                        title="🧠 Useless Fact",
-                        description=data["text"],
-                        color=discord.Color.teal()
-                    )
-                    embed.set_footer(text=f"Source: {data['source']}")
-                else:
-                    embed = discord.Embed(title="❌ API Error", description="Failed to retrieve a useless fact.", color=discord.Color.red())
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get("https://uselessfacts.jsph.pl/api/v2/facts/random?language=en") as resp,
+        ):
+            if resp.status == 200:
+                data = await resp.json()
+                embed = discord.Embed(
+                    title="🧠 Useless Fact",
+                    description=data["text"],
+                    color=discord.Color.teal(),
+                )
+                embed.set_footer(text=f"Source: {data['source']}")
+            else:
+                embed = discord.Embed(
+                    title="❌ API Error",
+                    description="Failed to retrieve a useless fact.",
+                    color=discord.Color.red(),
+                )
 
         await ctx.send(embed=embed)
+
 
 async def setup(bot: Amenity) -> None:
     await bot.add_cog(Fun(bot))

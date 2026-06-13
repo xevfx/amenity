@@ -65,9 +65,6 @@ def StringToTime(time_str: str) -> int:
     return int(total_seconds)
 
 
-
-
-
 def TimeToString(seconds: int) -> str:
     """
     Format seconds into a human-readable string.

@@ -120,37 +120,25 @@ async def log_command_usage(ctx: commands.Context) -> None:
         ctx: Discord context object
     """
     try:
-        embed = discord.Embed(
-            color=discord.Color.magenta(),
-            timestamp=datetime.now()
-        )
+        embed = discord.Embed(color=discord.Color.magenta(), timestamp=datetime.now())
         if ctx.author.avatar:
-            embed.set_author(
-            name=f"{ctx.author} | {ctx.author.id}",
-            icon_url=ctx.author.avatar.url)
+            embed.set_author(name=f"{ctx.author} | {ctx.author.id}", icon_url=ctx.author.avatar.url)
         else:
-            embed.set_author(
-            name=f"{ctx.author} | {ctx.author.id}")
+            embed.set_author(name=f"{ctx.author} | {ctx.author.id}")
 
-        embed.set_thumbnail(
-            url=ctx.guild.icon.url if ctx.guild and ctx.guild.icon else None
-        )
+        embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild and ctx.guild.icon else None)
 
         embed.add_field(name="Command", value=str(ctx.command), inline=False)
         embed.add_field(
             name="Server",
             value=f"{ctx.guild.name} [`{ctx.guild.id}`]" if ctx.guild else "DM",
-            inline=False
+            inline=False,
         )
-        embed.add_field(
-            name="Author",
-            value=f"{ctx.author} [`{ctx.author.id}`]",
-            inline=False
-        )
+        embed.add_field(name="Author", value=f"{ctx.author} [`{ctx.author.id}`]", inline=False)
         embed.add_field(
             name="Subcommand Called",
             value=str(ctx.invoked_subcommand) if ctx.invoked_subcommand else "None",
-            inline=True
+            inline=True,
         )
 
         await UsageWebhook(embed)
@@ -187,9 +175,7 @@ async def log_command_error(ctx: commands.Context, exception: Exception) -> None
         else:
             embed.set_author(name=f"{ctx.author} | {ctx.author.id}")
 
-        embed.set_thumbnail(
-            url=ctx.guild.icon.url if ctx.guild and ctx.guild.icon else None
-        )
+        embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild and ctx.guild.icon else None)
 
         embed.add_field(name="Command", value=str(ctx.command), inline=False)
         embed.add_field(
@@ -271,9 +257,7 @@ async def log_app_command_usage(
         )
         embed.add_field(
             name="Channel",
-            value=(
-                f"{channel} [`{channel.id}`]" if channel and interaction.guild else "DM"
-            ),
+            value=(f"{channel} [`{channel.id}`]" if channel and interaction.guild else "DM"),
             inline=False,
         )
         if user:
@@ -289,9 +273,7 @@ async def log_app_command_usage(
         log_exception(e)
 
 
-async def log_app_command_error(
-    interaction: discord.Interaction, exception: Exception
-) -> None:
+async def log_app_command_error(interaction: discord.Interaction, exception: Exception) -> None:
     """
     Log app command errors and tracebacks for on_app_command_error event.
 
@@ -342,9 +324,7 @@ async def log_app_command_error(
         )
         embed.add_field(
             name="Channel",
-            value=(
-                f"{channel} [`{channel.id}`]" if channel and interaction.guild else "DM"
-            ),
+            value=(f"{channel} [`{channel.id}`]" if channel and interaction.guild else "DM"),
             inline=False,
         )
         if user:

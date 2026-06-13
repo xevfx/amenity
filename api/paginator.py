@@ -110,8 +110,12 @@ class PaginatorHelper:
     """Helper class to create paginated embeds from data"""
 
     @staticmethod
-    def create_embeds(data: list[str], title: str, items_per_page: int = 10,
-                     color: discord.Color = discord.Color.blue()) -> list[discord.Embed]:
+    def create_embeds(
+        data: list[str],
+        title: str,
+        items_per_page: int = 10,
+        color: discord.Color = discord.Color.blue(),
+    ) -> list[discord.Embed]:
         """
         Create paginated embeds from a list of strings
         Args:
@@ -199,8 +203,12 @@ class PaginatorHelper:
         return embeds
 
     @staticmethod
-    def create_field_embeds(data: list[dict], title: str, items_per_page: int = 5,
-                           color: discord.Color = discord.Color.blue()) -> list[discord.Embed]:
+    def create_field_embeds(
+        data: list[dict],
+        title: str,
+        items_per_page: int = 5,
+        color: discord.Color = discord.Color.blue(),
+    ) -> list[discord.Embed]:
         """
         Create paginated embeds with fields from a list of dictionaries
         Args:
@@ -227,9 +235,9 @@ class PaginatorHelper:
 
             for item in page_data:
                 embed.add_field(
-                    name=item.get('name', 'Unknown'),
-                    value=item.get('value', 'No value'),
-                    inline=item.get('inline', False)
+                    name=item.get("name", "Unknown"),
+                    value=item.get("value", "No value"),
+                    inline=item.get("inline", False),
                 )
 
             embed.set_footer(text=f"Page {page + 1}/{total_pages} • Total: {len(data)} items")

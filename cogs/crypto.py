@@ -208,8 +208,7 @@ class Crypto(commands.Cog):
             return float(cached)
 
         coingecko_url = (
-            "https://api.coingecko.com/api/v3/simple/price"
-            "?ids=litecoin&vs_currencies=usd"
+            "https://api.coingecko.com/api/v3/simple/price?ids=litecoin&vs_currencies=usd"
         )
         data = await self._fetch_json(coingecko_url)
         price = None
@@ -235,8 +234,7 @@ class Crypto(commands.Cog):
             return float(cached)
 
         coingecko_url = (
-            "https://api.coingecko.com/api/v3/simple/price"
-            f"?ids={coin_id}&vs_currencies=usd"
+            f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
         )
         data = await self._fetch_json(coingecko_url)
         price = None
@@ -470,7 +468,6 @@ class Crypto(commands.Cog):
         embed.add_field(name="Balance", value=balance_str, inline=False)
         await ctx.send(embed=embed)
 
-
     @commands.hybrid_command(name="price", description="Get the price of a cryptocurrency.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -552,7 +549,7 @@ class Crypto(commands.Cog):
     @app_commands.describe(
         amount="The amount to convert",
         fromm="The currency to convert from",
-        to="The currency to convert to"
+        to="The currency to convert to",
     )
     async def crypto_convert(
         self,
@@ -592,21 +589,16 @@ class Crypto(commands.Cog):
                     embed = discord.Embed(
                         title="Currency Conversion",
                         description=(
-                            f"**{amount:,.2f} {fromm.upper()}** = "
-                            f"**{result:,.2f} {to.upper()}**"
+                            f"**{amount:,.2f} {fromm.upper()}** = **{result:,.2f} {to.upper()}**"
                         ),
                         color=discord.Color.blue(),
                     )
                     embed.set_footer(text="Exchange rates from Frankfurter (ECB)")
                     await ctx.send(embed=embed)
                 elif status == 404:
-                    await ctx.send(
-                        f"Invalid currency code: `{fromm.upper()}` or `{to.upper()}`"
-                    )
+                    await ctx.send(f"Invalid currency code: `{fromm.upper()}` or `{to.upper()}`")
                 else:
-                    await ctx.send(
-                        f"Could not convert {fromm.upper()} to {to.upper()}."
-                    )
+                    await ctx.send(f"Could not convert {fromm.upper()} to {to.upper()}.")
                 return
 
             if not from_is_fiat and to_is_fiat:
@@ -629,17 +621,14 @@ class Crypto(commands.Cog):
                     embed = discord.Embed(
                         title="Crypto to Fiat",
                         description=(
-                            f"**{amount:,.8g} {fromm.upper()}** = "
-                            f"**{result:,.2f} {to.upper()}**"
+                            f"**{amount:,.8g} {fromm.upper()}** = **{result:,.2f} {to.upper()}**"
                         ),
                         color=discord.Color.gold(),
                     )
                     embed.set_footer(text="Data from CoinGecko")
                     await ctx.send(embed=embed)
                 else:
-                    await ctx.send(
-                        f"Could not get rate for {fromm.upper()} in {to.upper()}."
-                    )
+                    await ctx.send(f"Could not get rate for {fromm.upper()} in {to.upper()}.")
                 return
 
             if from_is_fiat and not to_is_fiat:
@@ -659,26 +648,21 @@ class Crypto(commands.Cog):
                 if data and coin_id in data and fromm in data[coin_id]:
                     rate = data[coin_id][fromm]
                     if not rate:
-                        await ctx.send(
-                            f"Could not get rate for {to.upper()} in {fromm.upper()}."
-                        )
+                        await ctx.send(f"Could not get rate for {to.upper()} in {fromm.upper()}.")
                         return
                     result = amount / rate
                     result_str = f"{result:,.6f}" if result >= 1 else f"{result:.8f}"
                     embed = discord.Embed(
                         title="Fiat to Crypto",
                         description=(
-                            f"**{amount:,.2f} {fromm.upper()}** = "
-                            f"**{result_str} {to.upper()}**"
+                            f"**{amount:,.2f} {fromm.upper()}** = **{result_str} {to.upper()}**"
                         ),
                         color=discord.Color.gold(),
                     )
                     embed.set_footer(text="Data from CoinGecko")
                     await ctx.send(embed=embed)
                 else:
-                    await ctx.send(
-                        f"Could not get rate for {to.upper()} in {fromm.upper()}."
-                    )
+                    await ctx.send(f"Could not get rate for {to.upper()} in {fromm.upper()}.")
                 return
 
             if not from_is_fiat and not to_is_fiat:
@@ -709,8 +693,7 @@ class Crypto(commands.Cog):
                     embed = discord.Embed(
                         title="Crypto to Crypto",
                         description=(
-                            f"**{amount:,.8g} {fromm.upper()}** = "
-                            f"**{result_str} {to.upper()}**"
+                            f"**{amount:,.8g} {fromm.upper()}** = **{result_str} {to.upper()}**"
                         ),
                         color=discord.Color.purple(),
                     )
