@@ -314,7 +314,8 @@ class Games(commands.Cog):
                 )
         except Exception as exc:
             log_exception(exc)
-            await ctx.send("An error occurred while flipping the coin.")
+            await self._send_embed(ctx, "An error occurred while flipping the coin.", ephemeral=True)
+
 
 
     @commands.hybrid_command(name="blackjack", description="Play Blackjack with another user.")
@@ -323,17 +324,17 @@ class Games(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def blackjack(
-        self, ctx: commands.Context, opponent: discord.Member | None = None
+        self, ctx: commands.Context, opponent: discord.User | None = None
     ) -> None:
         try:
             if opponent is None:
                 await self._send_embed(ctx, "Usage: /blackjack @opponent", ephemeral=True)
                 return
             if opponent.bot:
-                await ctx.send("You cannot challenge a bot.", ephemeral=True)
+                await self._send_embed(ctx, "You cannot challenge a bot.", ephemeral=True)
                 return
             if opponent == ctx.author:
-                await ctx.send("You cannot challenge yourself.", ephemeral=True)
+                await self._send_embed(ctx, "You cannot challenge yourself.", ephemeral=True)
                 return
 
             class BJChallengeView(discord.ui.View):
@@ -397,7 +398,6 @@ class Games(commands.Cog):
                 opponent.id: [],
             }
 
-            # Keep track of who has actually taken an interactive action (Hit or Stand)
             interacted_players: set[int] = set()
 
             for _ in range(2):
@@ -424,31 +424,26 @@ class Games(commands.Cog):
                     for p in players:
                         val = _hand_value(hands[p.id])
                         if self.finished:
-                            # Reveal everything at game completion
                             line = f"**Hand:** {_hand_display(hands[p.id])} = **{val}**"
                             if val > 21:
                                 line += " 💥 (Bust)"
                         else:
-                            # FIX 1: Check player-specific interaction state rather
-                            # than global state
                             if p.id not in interacted_players:
-                                # Has not hit or stood yet: show both starting cards publicly
                                 line = f"**Hand:** {_hand_display(hands[p.id])} = **{val}**"
                                 if val == 21:
                                     line += " ✨ (Blackjack!)"
                                 elif val > 21:
                                     line += " 💥 (Bust)"
                             else:
-                                # Has hit or stood: hide everything except the very
-                                # first initial card
-                                first_card = hands[p.id][0]
-                                first_card_value = _hand_value([first_card])
+                                initial_two_cards = hands[p.id][:2]
+                                initial_value = _hand_value(initial_two_cards)
                                 line = (
-                                    f"**Showing:** {_hand_display([first_card])} = "
-                                    f"**{first_card_value}**"
+                                    f"**Hand:** {_hand_display(initial_two_cards)} = "
+                                    f"**{initial_value}**"
                                 )
 
-                        embed.add_field(name=p.display_name, value=line, inline=False)
+                        name = getattr(p, "global_name", None) or p.name
+                        embed.add_field(name=name, value=line, inline=False)
                     return embed
 
                 def build_hand_embed(self, pid: int) -> discord.Embed:
@@ -468,8 +463,13 @@ class Games(commands.Cog):
                     )
 
                 def check_game_over(self) -> bool:
+                    # FIX: Auto-lock players who hit 21 or bust so checking is completely accurate
                     for p in players:
-                        if p.id not in self.finished_players and _hand_value(hands[p.id]) <= 21:
+                        if _hand_value(hands[p.id]) >= 21:
+                            self.finished_players.add(p.id)
+
+                    for p in players:
+                        if p.id not in self.finished_players:
                             return False
                     self.finished = True
                     return True
@@ -510,7 +510,6 @@ class Games(commands.Cog):
 
                     pid = interaction.user.id
 
-                    # Explicit hand checks
                     if inner_self.action == "view_hand":
                         await interaction.response.send_message(
                             embed=bj_view.build_hand_embed(pid), ephemeral=True
@@ -524,23 +523,22 @@ class Games(commands.Cog):
                         )
                         return
 
-                    if pid in bj_view.finished_players or _hand_value(hands[pid]) > 21:
+                    if pid in bj_view.finished_players or _hand_value(hands[pid]) >= 21:
                         await interaction.response.send_message(
                             "Your choices are locked in. Waiting on your opponent.", ephemeral=True
                         )
                         return
 
-                    # Process Active Options
                     if inner_self.action == "hit":
                         hands[pid].append(deck.pop())
-                        interacted_players.add(pid)  # Locks down this user's cards from public eye
-                        if _hand_value(hands[pid]) > 21:
+                        interacted_players.add(pid)
+                        # FIX: Directly finalize the player if they hit 21 or bust
+                        if _hand_value(hands[pid]) >= 21:
                             bj_view.finished_players.add(pid)
                     elif inner_self.action == "stand":
                         interacted_players.add(pid)
                         bj_view.finished_players.add(pid)
 
-                    # Update Board States
                     if bj_view.check_game_over():
                         for child in bj_view.children:
                             child.disabled = True
@@ -548,9 +546,6 @@ class Games(commands.Cog):
                         embed.description = f"**Game Over**\n{bj_view.final_result()}"
                         await interaction.response.edit_message(embed=embed, view=bj_view)
                     else:
-                        # FIX 2: Instead of updating silently, we use edit_message to process
-                        # the main board state and send a fresh, ephemeral update containing
-                        # their active hand values.
                         embed = bj_view.build_main_embed()
                         await interaction.response.edit_message(embed=embed, view=bj_view)
                         if pid in bj_view.hand_messages:
@@ -566,8 +561,24 @@ class Games(commands.Cog):
             view.add_item(ActionButton("stand"))
             view.add_item(ActionButton("view_hand"))
 
-            view.check_game_over()
-            await chal_msg.edit(content=None, embed=view.build_main_embed(), view=view)
+            # FIX: Check natural deal conditions before starting layout processing
+            p1_val = _hand_value(hands[ctx.author.id])
+            p2_val = _hand_value(hands[opponent.id])
+            
+            # If anyone naturally deals a 21 or busts at startup, push them to finished state right away
+            if p1_val >= 21:
+                view.finished_players.add(ctx.author.id)
+            if p2_val >= 21:
+                view.finished_players.add(opponent.id)
+
+            if view.check_game_over():
+                for child in view.children:
+                    child.disabled = True
+                embed = view.build_main_embed()
+                embed.description = f"**Game Over**\n{view.final_result()}"
+                await chal_msg.edit(content=None, embed=embed, view=view)
+            else:
+                await chal_msg.edit(content=None, embed=view.build_main_embed(), view=view)
 
         except Exception as exc:
             log_exception(exc)
@@ -576,8 +587,11 @@ class Games(commands.Cog):
             else:
                 await ctx.send("An error occurred while playing Blackjack.")
 
+
+
+
     @commands.hybrid_command(
-        name="tictactoe", description="Play a game of Tic-Tac-Toe using buttons."
+        name="tic-tac-toe", description="Play a game of Tic-Tac-Toe using buttons."
     )
     @app_commands.describe(opponent="Optional: The user you want to challenge")
     @app_commands.allowed_installs(guilds=True, users=True)

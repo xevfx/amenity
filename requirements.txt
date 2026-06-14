@@ -12,3 +12,5 @@ simpleeval
 googletrans
 faker
 pycountry
+aiosqlite
+psutil

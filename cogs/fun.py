@@ -132,7 +132,7 @@ class Fun(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="catfact", description="Get a random cat fact.")
+    @commands.hybrid_command(name="cat-fact", description="Get a random cat fact.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
@@ -155,7 +155,7 @@ class Fun(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="dogfact", description="Get a random dog fact.")
+    @commands.hybrid_command(name="dog-fact", description="Get a random dog fact.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
@@ -184,7 +184,7 @@ class Fun(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="gayrate", description="Check how gay somone is (for fun).")
+    @commands.hybrid_command(name="gay-rate", description="Check how gay somone is (for fun).")
     @app_commands.describe(user="Optional: The user to check. Defaults to yourself.")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -192,13 +192,15 @@ class Fun(commands.Cog):
     async def gayrate(self, ctx: commands.Context, user: discord.User | None = None) -> None:
         target = user or ctx.author
         rate = random.randint(0, 100)
-        await self._send_embed(
-            ctx,
-            description=f"{target.mention} is {rate}% gay!",
-            title="Gay Rate",
-            color=discord.Color.pink(),
-            ephemeral=True,
+        await ctx.send(
+            embed=discord.Embed(
+                description=f"{target.mention} is {rate}% gay!",
+                title="Gay Rate",
+                color=discord.Color.pink()
+            ),
+            ephemeral=True
         )
+        
 
     @commands.hybrid_command(
         name="faker", description="Generate a fake name and address by country name or code."
@@ -294,7 +296,7 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(
-        name="dadjoke", description="Get a random dad joke from icanhazdadjoke."
+        name="dad-joke", description="Get a random dad joke from icanhazdadjoke."
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -317,6 +319,43 @@ class Fun(commands.Cog):
                     )
 
         await ctx.send(embed=embed)
+
+
+    @commands.hybrid_command(
+        name="dark-joke",
+        description="Get a random dark joke from the Official Joke API."
+    )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @commands.cooldown(1, 3, commands.BucketType.user)
+    @commands.max_concurrency(20, commands.BucketType.default, wait=True)
+    async def dark_joke_cmd(self, ctx: commands.Context):
+        """
+        Get a random dark joke from the Official Joke API.
+        """
+        try:
+            url = "https://v2.jokeapi.dev/joke/Dark?type=single,twopart"
+            async with self.aiohttp.get(url) as resp:
+                if resp.status != 200:
+                    return await ctx.send("Could not fetch a joke at this time.")
+                data = await resp.json()
+
+            if data.get('type') == 'single':
+                joke_text = data.get('joke', 'No joke found.')
+            else:
+                setup = data.get('setup', '')
+                delivery = data.get('delivery', '')
+                joke_text = f"{setup}\n\n{delivery}"
+
+            embed = discord.Embed(
+                title="Here's a dark joke for you!",
+                description=joke_text,
+                color=discord.Color.dark_grey()
+            )
+            await ctx.reply(embed=embed,mention_author=False)
+        except Exception as e:
+            await ctx.send(f"An error occurred")
+            await log_exception(e)
 
     @commands.hybrid_command(name="fact", description="Get a random completely useless fact.")
     @app_commands.allowed_installs(guilds=True, users=True)
