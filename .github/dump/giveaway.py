@@ -98,10 +98,8 @@ class GiveawayJoinView(discord.ui.View):
             action_text = f"{Emoji.TADA.value} You entered the giveaway!"
 
         # Persist participants immediately so they survive restarts.
-        try:
+        with contextlib.suppress(Exception):
             await self._persist_participants(msg_id, self.participants[msg_id])
-        except Exception:
-            pass
 
         # Update button label.
         button.label = str(len(self.participants[msg_id]))
@@ -367,10 +365,8 @@ class UserAppGiveaway(commands.Cog):
 
     @tasks.loop(seconds=5)
     async def GiveawayEnd(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             await self._giveaway_end_pass()
-        except Exception:
-            pass
 
     async def _giveaway_end_pass(self) -> None:
         """One iteration of the giveaway end loop."""

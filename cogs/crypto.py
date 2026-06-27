@@ -1,6 +1,7 @@
 import asyncio
 import os
 from contextlib import suppress
+from datetime import datetime
 
 import aiohttp
 import aiosqlite
@@ -15,7 +16,10 @@ from core.cache import cache
 
 _PRICE_CACHE_KEY = "ltc:usd_price"
 _ETH_PRICE_CACHE_KEY = "eth:usd_price"
+_BTC_PRICE_CACHE_KEY = "btc:usd_price"
 _BLOCKCYPHER_TOKEN = os.getenv("BLOCKCYPHER_TOKEN")
+_ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "")
+_BSCSCAN_API_KEY = os.getenv("BSCSCAN_API_KEY", "")
 _SOL_PRICE_CACHE_KEY = "sol:usd_price"
 _COIN_LIST_CACHE_KEY = "coingecko:coin_list"
 _PRICE_DETAILS_CACHE_PREFIX = "price:multi:"
@@ -243,6 +247,30 @@ class Crypto(commands.Cog):
             return None
 
         cache.set(_PRICE_CACHE_KEY, float(price), ttl=60)
+        return float(price)
+
+    async def _get_btc_price_usd(self) -> float | None:
+        cached = cache.get(_BTC_PRICE_CACHE_KEY)
+        if isinstance(cached, (int, float)):
+            return float(cached)
+
+        coingecko_url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        data = await self._fetch_json(coingecko_url)
+        price = None
+        if data and isinstance(data.get("bitcoin"), dict):
+            price = data["bitcoin"].get("usd")
+
+        if price is None:
+            binance_url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+            data = await self._fetch_json(binance_url)
+            if data and "price" in data:
+                with suppress(ValueError, TypeError):
+                    price = float(data["price"])
+
+        if price is None:
+            return None
+
+        cache.set(_BTC_PRICE_CACHE_KEY, float(price), ttl=60)
         return float(price)
 
     async def _get_price_usd(self, coin_id: str, cache_key: str) -> float | None:
@@ -475,6 +503,542 @@ class Crypto(commands.Cog):
             balance_usd = balance_in_coin * price_usd
             balance_str += f" (${balance_usd:,.2f} USD)"
         embed.add_field(name="Balance", value=balance_str, inline=False)
+        await ctx.send(embed=embed)
+
+    @balance.command(name="usdt-bep20", description="Get the USDT (BEP-20) balance of a BSC address.")
+    @app_commands.describe(address="The BSC address to check")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def usdt_bep20_balance(self, ctx: commands.Context, address: str) -> None:
+        address = address.strip()
+        if not address:
+            await self._send_embed(ctx, "Usage: /balance usdt-bep20 <address>", ephemeral=False)
+            return
+
+        contract = "0x55d398326f99059fF775485246999027B3197955"
+        url = f"https://api.bscscan.com/api?module=account&action=tokenbalance&contractaddress={contract}&address={address}"
+        if _BSCSCAN_API_KEY:
+            url += f"&apikey={_BSCSCAN_API_KEY}"
+
+        data = await self._fetch_json(url)
+        if not data or data.get("status") != "1":
+            await ctx.send(f"Unable to fetch USDT balance for `{address}`.")
+            return
+
+        try:
+            balance_raw = int(data.get("result", "0"))
+        except (ValueError, TypeError):
+            await ctx.send(f"Unable to fetch USDT balance for `{address}`.")
+            return
+
+        balance = balance_raw / 10**18
+        price_usd = await self._get_price_usd("tether", "usdt:usd_price")
+
+        embed = discord.Embed(
+            description=f"[{address}](https://bscscan.com/address/{address})",
+            color=0xF0B90B,
+        )
+
+        balance_str = f"{balance:,.2f} USDT"
+        if price_usd:
+            balance_str += f" (${balance:,.2f} USD)"
+        embed.add_field(name="Balance", value=balance_str, inline=False)
+        await ctx.send(embed=embed)
+
+    # ── /txid group ─────────────────────────────────────────────────
+
+    @commands.hybrid_group(
+        name="txid",
+        description="Get information about a blockchain transaction",
+        invoke_without_command=True,
+    )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def txid(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    @txid.command(name="ltc", description="Get information about a Litecoin transaction.")
+    @app_commands.describe(tx_hash="The Litecoin transaction hash (TXID)")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def ltc_txid(self, ctx: commands.Context, tx_hash: str) -> None:
+        tx_hash = tx_hash.strip()
+        if not tx_hash:
+            await self._send_embed(ctx, "Usage: /txid ltc <tx_hash>", ephemeral=False)
+            return
+
+        url = f"https://api.blockcypher.com/v1/ltc/main/txs/{tx_hash}"
+        if _BLOCKCYPHER_TOKEN:
+            url += f"?token={_BLOCKCYPHER_TOKEN}"
+
+        try:
+            async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                elif response.status == 404:
+                    await ctx.send(f"Transaction `{tx_hash}` not found on Litecoin network.")
+                    return
+                elif response.status == 429:
+                    await ctx.send("⚠️ Rate limited by BlockCypher. Please try again later.")
+                    return
+                else:
+                    await ctx.send(f"Error fetching transaction from BlockCypher (Status: {response.status}).")
+                    return
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send("An error occurred while fetching the transaction.")
+            return
+
+        price_usd = await self._get_ltc_price_usd()
+
+        fees_sat = data.get("fees", 0)
+        confirmations = data.get("confirmations", 0)
+        confirmed = data.get("confirmed", "")
+        block_height = data.get("block_height", 0)
+        size = data.get("size", 0)
+        inputs = data.get("inputs", [])
+        outputs = data.get("outputs", [])
+
+        fees_ltc = fees_sat / 10**8
+
+        input_addrs = {addr for inp in inputs for addr in (inp.get("addresses") or [])}
+
+        sent_sat = sum(
+            out.get("value", 0) for out in outputs
+            if not any(addr in input_addrs for addr in (out.get("addresses") or []))
+        )
+
+        embed = discord.Embed(
+            title=f"{Emoji.CRYPTO.value} Litecoin Transaction",
+            description=f"[`{tx_hash}`](https://live.blockcypher.com/ltc/tx/{tx_hash})",
+            color=0xB0C4DE,
+        )
+        sent_ltc = sent_sat / 10**8
+        sent_str = f"{sent_ltc:.8f} LTC"
+        if price_usd:
+            sent_str += f" (${sent_ltc * price_usd:,.2f} USD)"
+        embed.add_field(name="Amount Sent", value=sent_str, inline=False)
+
+        def _short_addr(addr: str) -> str:
+            return f"`{addr[:12]}...{addr[-4:]}`"
+
+        def _group_by_address(items: list[dict], value_key: str) -> dict[str, int]:
+            groups: dict[str, int] = {}
+            for item in items:
+                addrs = item.get("addresses") or []
+                val = item.get(value_key) or 0
+                addr = addrs[0] if addrs else "unknown"
+                groups[addr] = groups.get(addr, 0) + val
+            return groups
+
+        def _format_group(groups: dict[str, int]) -> list[str]:
+            return [_short_addr(addr) for addr in groups]
+
+        from_groups = _group_by_address(inputs, "output_value")
+        to_groups_all = _group_by_address(outputs, "value")
+
+        to_groups = {a: v for a, v in to_groups_all.items() if a not in input_addrs}
+
+        from_lines = _format_group(from_groups)
+        to_lines = _format_group(to_groups)
+
+        if from_lines:
+            embed.add_field(name="From", value="\n".join(from_lines), inline=False)
+
+        if to_lines:
+            embed.add_field(name="To", value="\n".join(to_lines), inline=False)
+
+        fees_str = f"{fees_ltc:.8f} LTC"
+        if price_usd:
+            fees_str += f" (${fees_ltc * price_usd:,.2f} USD)"
+        embed.add_field(name="Fees", value=fees_str, inline=True)
+        embed.add_field(name="Confirmations", value=str(confirmations), inline=True)
+        embed.add_field(name="Block Height", value=str(block_height), inline=True)
+        embed.add_field(name="Size", value=f"{size} bytes", inline=True)
+
+        if confirmed:
+            try:
+                dt = datetime.fromisoformat(confirmed.replace("Z", "+00:00"))
+                embed.add_field(name="Confirmed", value=f"<t:{int(dt.timestamp())}:R>", inline=False)
+            except (ValueError, TypeError):
+                pass
+
+        await ctx.send(embed=embed)
+
+    @txid.command(name="btc", description="Get information about a Bitcoin transaction.")
+    @app_commands.describe(tx_hash="The Bitcoin transaction hash (TXID)")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def btc_txid(self, ctx: commands.Context, tx_hash: str) -> None:
+        tx_hash = tx_hash.strip()
+        if not tx_hash:
+            await self._send_embed(ctx, "Usage: /txid btc <tx_hash>", ephemeral=False)
+            return
+
+        url = f"https://api.blockcypher.com/v1/btc/main/txs/{tx_hash}"
+        if _BLOCKCYPHER_TOKEN:
+            url += f"?token={_BLOCKCYPHER_TOKEN}"
+
+        try:
+            async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                elif response.status == 404:
+                    await ctx.send(f"Transaction `{tx_hash}` not found on Bitcoin network.")
+                    return
+                elif response.status == 429:
+                    await ctx.send("⚠️ Rate limited by BlockCypher. Please try again later.")
+                    return
+                else:
+                    await ctx.send(f"Error fetching transaction from BlockCypher (Status: {response.status}).")
+                    return
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send("An error occurred while fetching the transaction.")
+            return
+
+        price_usd = await self._get_btc_price_usd()
+
+        fees_sat = data.get("fees", 0)
+        confirmations = data.get("confirmations", 0)
+        confirmed = data.get("confirmed", "")
+        block_height = data.get("block_height", 0)
+        size = data.get("size", 0)
+        inputs = data.get("inputs", [])
+        outputs = data.get("outputs", [])
+
+        fees_btc = fees_sat / 10**8
+
+        input_addrs = {addr for inp in inputs for addr in (inp.get("addresses") or [])}
+
+        sent_sat = sum(
+            out.get("value", 0) for out in outputs
+            if not any(addr in input_addrs for addr in (out.get("addresses") or []))
+        )
+
+        embed = discord.Embed(
+            title=f"{Emoji.CRYPTO.value} Bitcoin Transaction",
+            description=f"[`{tx_hash}`](https://live.blockcypher.com/btc/tx/{tx_hash})",
+            color=0xF7931A,
+        )
+
+        sent_btc = sent_sat / 10**8
+        sent_str = f"{sent_btc:.8f} BTC"
+        if price_usd:
+            sent_str += f" (${sent_btc * price_usd:,.2f} USD)"
+        embed.add_field(name="Amount Sent", value=sent_str, inline=False)
+
+        def _short_addr(addr: str) -> str:
+            return f"`{addr[:12]}...{addr[-4:]}`"
+
+        def _group_by_address(items: list[dict], value_key: str) -> dict[str, int]:
+            groups: dict[str, int] = {}
+            for item in items:
+                addrs = item.get("addresses") or []
+                val = item.get(value_key) or 0
+                addr = addrs[0] if addrs else "unknown"
+                groups[addr] = groups.get(addr, 0) + val
+            return groups
+
+        from_groups = _group_by_address(inputs, "output_value")
+        to_groups_all = _group_by_address(outputs, "value")
+        to_groups = {a: v for a, v in to_groups_all.items() if a not in input_addrs}
+
+        from_lines = [_short_addr(addr) for addr in from_groups]
+        to_lines = [_short_addr(addr) for addr in to_groups]
+
+        if from_lines:
+            embed.add_field(name="From", value="\n".join(from_lines), inline=False)
+        if to_lines:
+            embed.add_field(name="To", value="\n".join(to_lines), inline=False)
+
+        fees_str = f"{fees_btc:.8f} BTC"
+        if price_usd:
+            fees_str += f" (${fees_btc * price_usd:,.2f} USD)"
+        embed.add_field(name="Fees", value=fees_str, inline=True)
+        embed.add_field(name="Confirmations", value=str(confirmations), inline=True)
+        embed.add_field(name="Block Height", value=str(block_height), inline=True)
+        embed.add_field(name="Size", value=f"{size} bytes", inline=True)
+        embed.set_footer(text="NOTE: These values are based on current price of the coin.")
+        if confirmed:
+            try:
+                dt = datetime.fromisoformat(confirmed.replace("Z", "+00:00"))
+                embed.add_field(name="Confirmed", value=f"<t:{int(dt.timestamp())}:R>", inline=False)
+            except (ValueError, TypeError):
+                pass
+
+        await ctx.send(embed=embed)
+
+    @txid.command(name="sol", description="Get information about a Solana transaction.")
+    @app_commands.describe(tx_hash="The Solana transaction hash (signature)")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def sol_txid(self, ctx: commands.Context, tx_hash: str) -> None:
+        tx_hash = tx_hash.strip()
+        if not tx_hash:
+            await self._send_embed(ctx, "Usage: /txid sol <tx_hash>", ephemeral=False)
+            return
+
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getTransaction",
+            "params": [tx_hash, {"encoding": "json", "maxSupportedTransactionVersion": 0}],
+        }
+
+        try:
+            async with self.aiohttp.post(
+                "https://api.mainnet-beta.solana.com",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                else:
+                    await ctx.send(f"Error fetching transaction from Solana RPC (Status: {response.status}).")
+                    return
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send("An error occurred while fetching the transaction.")
+            return
+
+        result = data.get("result") if isinstance(data, dict) else None
+        if not result:
+            await ctx.send(f"Transaction `{tx_hash}` not found on Solana network.")
+            return
+
+        meta = result.get("meta") or {}
+        tx_message = result.get("transaction", {}).get("message", {})
+        account_keys = tx_message.get("accountKeys", [])
+        pre_balances = meta.get("preBalances", [])
+        post_balances = meta.get("postBalances", [])
+        fee_lamports = meta.get("fee", 0)
+        block_time = result.get("blockTime")
+        slot = result.get("slot", 0)
+        err = meta.get("err")
+
+        if err:
+            await ctx.send("❌ This transaction failed.")
+            return
+
+        sender_addr = account_keys[0] if account_keys else "unknown"
+
+        receiver_addr = None
+        received_lamports = 0
+        for i, addr in enumerate(account_keys):
+            if i == 0:
+                continue
+            if i < len(pre_balances) and i < len(post_balances):
+                diff = post_balances[i] - pre_balances[i]
+                if diff > 0:
+                    receiver_addr = addr
+                    received_lamports = diff
+                    break
+
+        price_usd = await self._get_price_usd("solana", _SOL_PRICE_CACHE_KEY)
+
+        sent_lamports = received_lamports
+        sent_sol = sent_lamports / 10**9
+        fees_sol = fee_lamports / 10**9
+
+        embed = discord.Embed(
+            title=f"{Emoji.CRYPTO.value} Solana Transaction",
+            description=f"[`{tx_hash}`](https://solscan.io/tx/{tx_hash})",
+            color=0x00FFA3,
+        )
+
+        sent_str = f"{sent_sol:.9f} SOL"
+        if price_usd:
+            sent_str += f" (${sent_sol * price_usd:,.2f} USD)"
+        embed.add_field(name="Amount Sent", value=sent_str, inline=False)
+
+        if sender_addr:
+            embed.add_field(name="From", value=f"`{sender_addr[:12]}...{sender_addr[-4:]}`", inline=False)
+        if receiver_addr:
+            embed.add_field(name="To", value=f"`{receiver_addr[:12]}...{receiver_addr[-4:]}`", inline=False)
+
+        fees_str = f"{fees_sol:.9f} SOL"
+        if price_usd:
+            fees_str += f" (${fees_sol * price_usd:,.2f} USD)"
+        embed.add_field(name="Fees", value=fees_str, inline=True)
+        embed.add_field(name="Slot", value=str(slot), inline=True)
+        embed.set_footer(text="NOTE: These values are based on current price of the coin.")
+        if block_time:
+            embed.add_field(name="Confirmed", value=f"<t:{block_time}:R>", inline=False)
+
+        await ctx.send(embed=embed)
+
+    @txid.command(name="eth", description="Get information about an Ethereum transaction.")
+    @app_commands.describe(tx_hash="The Ethereum transaction hash (TXID)")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def eth_txid(self, ctx: commands.Context, tx_hash: str) -> None:
+        tx_hash = tx_hash.strip()
+        if not tx_hash:
+            await self._send_embed(ctx, "Usage: /txid eth <tx_hash>", ephemeral=False)
+            return
+
+        url = f"https://api.blockcypher.com/v1/eth/main/txs/{tx_hash}"
+        if _BLOCKCYPHER_TOKEN:
+            url += f"?token={_BLOCKCYPHER_TOKEN}"
+
+        try:
+            async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                elif response.status == 404:
+                    await ctx.send(f"Transaction `{tx_hash}` not found on Ethereum network.")
+                    return
+                elif response.status == 429:
+                    await ctx.send("⚠️ Rate limited by BlockCypher. Please try again later.")
+                    return
+                else:
+                    await ctx.send(f"Error fetching transaction from BlockCypher (Status: {response.status}).")
+                    return
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send("An error occurred while fetching the transaction.")
+            return
+
+        price_usd = await self._get_price_usd("ethereum", _ETH_PRICE_CACHE_KEY)
+
+        fees_wei = data.get("fees", 0)
+        confirmations = data.get("confirmations", 0)
+        confirmed = data.get("confirmed", "")
+        block_height = data.get("block_height", 0)
+        inputs = data.get("inputs", [])
+        outputs = data.get("outputs", [])
+
+        fees_eth = fees_wei / 10**18
+
+        input_addrs = {addr for inp in inputs for addr in (inp.get("addresses") or [])}
+
+        sent_wei = sum(
+            out.get("value", 0) for out in outputs
+            if not any(addr in input_addrs for addr in (out.get("addresses") or []))
+        )
+
+        embed = discord.Embed(
+            title=f"{Emoji.CRYPTO.value} Ethereum Transaction",
+            description=f"[`{tx_hash}`](https://live.blockcypher.com/eth/tx/{tx_hash[2:]})",
+            color=0x627EEA,
+        )
+
+        sent_eth = sent_wei / 10**18
+        sent_str = f"{sent_eth:.8f} ETH"
+        if price_usd:
+            sent_str += f" (${sent_eth * price_usd:,.2f} USD)"
+        embed.add_field(name="Amount Sent", value=sent_str, inline=False)
+
+        def _short_addr(addr: str) -> str:
+            return f"`{addr[:12]}...{addr[-4:]}`"
+
+        def _group_by_address(items: list[dict], value_key: str) -> dict[str, int]:
+            groups: dict[str, int] = {}
+            for item in items:
+                addrs = item.get("addresses") or []
+                val = item.get(value_key) or 0
+                addr = addrs[0] if addrs else "unknown"
+                groups[addr] = groups.get(addr, 0) + val
+            return groups
+
+        from_groups = _group_by_address(inputs, "output_value")
+        to_groups_all = _group_by_address(outputs, "value")
+        to_groups = {a: v for a, v in to_groups_all.items() if a not in input_addrs}
+
+        from_lines = [_short_addr(addr) for addr in from_groups]
+        to_lines = [_short_addr(addr) for addr in to_groups]
+
+        if from_lines:
+            embed.add_field(name="From", value="\n".join(from_lines), inline=False)
+        if to_lines:
+            embed.add_field(name="To", value="\n".join(to_lines), inline=False)
+
+        fees_str = f"{fees_eth:.8f} ETH"
+        if price_usd:
+            fees_str += f" (${fees_eth * price_usd:,.2f} USD)"
+        embed.add_field(name="Fees", value=fees_str, inline=True)
+        embed.add_field(name="Confirmations", value=str(confirmations), inline=True)
+        embed.add_field(name="Block Height", value=str(block_height), inline=True)
+        embed.set_footer(text="NOTE: These values are based on current price of the coin.")
+        if confirmed:
+            try:
+                dt = datetime.fromisoformat(confirmed.replace("Z", "+00:00"))
+                embed.add_field(name="Confirmed", value=f"<t:{int(dt.timestamp())}:R>", inline=False)
+            except (ValueError, TypeError):
+                pass
+
+        await ctx.send(embed=embed)
+
+    @txid.command(name="usdt-bep20", description="Get information about a USDT BEP-20 transaction on BSC.")
+    @app_commands.describe(tx_hash="The BSC transaction hash")
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    async def usdt_bep20_txid(self, ctx: commands.Context, tx_hash: str) -> None:
+        tx_hash = tx_hash.strip()
+        if not tx_hash:
+            await self._send_embed(ctx, "Usage: /txid usdt-bep20 <tx_hash>", ephemeral=False)
+            return
+
+        url = f"https://api.bscscan.com/api?module=account&action=tokentx&txhash={tx_hash}&sort=asc"
+        if _BSCSCAN_API_KEY:
+            url += f"&apikey={_BSCSCAN_API_KEY}"
+
+        data = await self._fetch_json(url)
+        if not data or data.get("status") != "1":
+            await ctx.send(f"Transaction `{tx_hash}` not found or no token transfers on BSC.")
+            return
+
+        transfers = data.get("result", [])
+        if not isinstance(transfers, list):
+            await ctx.send(f"Transaction `{tx_hash}` not found or no token transfers on BSC.")
+            return
+
+        usdt_transfers = [t for t in transfers if t.get("tokenSymbol", "").upper() == "USDT"]
+        if not usdt_transfers:
+            await ctx.send(f"No USDT transfer found in transaction `{tx_hash}`.")
+            return
+
+        tx_data = usdt_transfers[0]
+
+        price_usd = await self._get_price_usd("tether", "usdt:usd_price")
+
+        from_addr = tx_data.get("from", "")
+        to_addr = tx_data.get("to", "")
+        value_dec = tx_data.get("value", "0")
+        token_symbol = tx_data.get("tokenSymbol", "USDT")
+        token_decimal = int(tx_data.get("tokenDecimal", 18))
+        try:
+            value_float = float(value_dec) / (10**token_decimal)
+        except (ValueError, TypeError):
+            value_float = 0.0
+
+        gas_used = int(tx_data.get("gasUsed", 0))
+        gas_price = int(tx_data.get("gasPrice", 0))
+        gas_fee_bnb = (gas_used * gas_price) / 10**18
+        confirmations = tx_data.get("confirmations", "0")
+        block_number = tx_data.get("blockNumber", "0")
+        time_stamp = tx_data.get("timeStamp", "0")
+
+        embed = discord.Embed(
+            title=f"{Emoji.CRYPTO.value} USDT (BEP-20) Transaction",
+            description=f"[`{tx_hash[:16]}...`](https://bscscan.com/tx/{tx_hash})",
+            color=0xF0B90B,
+        )
+
+        sent_str = f"{value_float:,.2f} {token_symbol}"
+        if price_usd:
+            sent_str += f" (${value_float * price_usd:,.2f} USD)"
+        embed.add_field(name="Amount Sent", value=sent_str, inline=False)
+
+        embed.add_field(name="From", value=f"`{from_addr[:12]}...{from_addr[-4:]}`", inline=False)
+        embed.add_field(name="To", value=f"`{to_addr[:12]}...{to_addr[-4:]}`", inline=False)
+
+        embed.add_field(name="Gas Fee", value=f"{gas_fee_bnb:.8f} BNB", inline=True)
+        embed.add_field(name="Confirmations", value=str(confirmations), inline=True)
+        embed.add_field(name="Block", value=str(block_number), inline=True)
+        embed.set_footer(text="NOTE: These values are based on current price of the coin.")
+        try:
+            ts = int(time_stamp)
+            embed.add_field(name="Confirmed", value=f"<t:{ts}:R>", inline=False)
+        except (ValueError, TypeError):
+            pass
+
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="price", description="Get the price of a cryptocurrency.")

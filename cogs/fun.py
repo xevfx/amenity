@@ -1,5 +1,7 @@
 import asyncio
+import io
 import random
+from pathlib import Path
 from urllib.parse import quote
 
 import aiohttp
@@ -9,6 +11,7 @@ from discord import app_commands
 from discord.ext import commands
 from faker import Faker
 from faker.config import AVAILABLE_LOCALES
+from PIL import Image, ImageDraw, ImageFont
 
 from api.emojis import Emoji
 from api.log import log_exception
@@ -366,6 +369,169 @@ class Fun(commands.Cog):
                 )
 
         await ctx.send(embed=embed)
+
+
+    @commands.hybrid_group(
+        name="meme",
+        invoke_without_command=True,
+        with_app_command=True,
+        description="Generate various meme images.",
+    )
+    @commands.cooldown(1, 10, commands.BucketType.user)
+    @commands.max_concurrency(5, commands.BucketType.default, wait=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def meme_group(self, ctx: commands.Context) -> None:
+        await ctx.reply(
+            "Use /meme rip | waiting",
+            delete_after=5,
+            ephemeral=True,
+            mention_author=False,
+        )
+
+    @meme_group.command(
+        name="rip",
+        description="Put a user's avatar on a RIP tombstone.",
+    )
+    @app_commands.describe(user="The user to put on the tombstone.")
+    @commands.cooldown(1, 10, commands.BucketType.user)
+    async def meme_rip(self, ctx: commands.Context, user: discord.User) -> None:
+        target = user
+        avatar_url = target.display_avatar.with_format("png").with_size(128)
+        output = Path(f"rip_{target.id}.png")
+
+        await ctx.defer()
+
+        try:
+            async with self.aiohttp.get(str(avatar_url)) as resp:
+                if resp.status != 200:
+                    await ctx.send("Failed to fetch the avatar.")
+                    return
+                avatar_bytes = await resp.read()
+
+            if not _generate_rip(avatar_bytes, str(output), target.display_name):
+                await ctx.send("Failed to generate the image.")
+                return
+
+            embed = discord.Embed(
+                title=f"RIP {target.display_name}",
+                color=discord.Color.dark_gray(),
+            )
+            embed.set_image(url=f"attachment://{output.name}")
+            embed.set_footer(
+                text=f"Requested by {ctx.author}",
+                icon_url=ctx.author.display_avatar.url,
+            )
+            await ctx.send(embed=embed, file=discord.File(str(output)))
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send("An error occurred while processing the image.")
+        finally:
+            output.unlink(missing_ok=True)
+
+
+    @meme_group.command(
+        name="waiting",
+        description="Put text on a waiting meme template.",
+    )
+    @app_commands.describe(text="The text to display (max 60 characters).")
+    @commands.cooldown(1, 10, commands.BucketType.user)
+    async def meme_waiting(self, ctx: commands.Context, *, text: str) -> None:
+        text = text.strip()
+        if not text:
+            await ctx.send("Please provide some text.")
+            return
+        if len(text) > 60:
+            await ctx.send("Text must be 60 characters or less.")
+            return
+
+        output = Path(f"waiting_{ctx.author.id}.png")
+
+        await ctx.defer()
+
+        try:
+            if not _generate_waiting(str(output), text):
+                await ctx.send("Failed to generate the image.")
+                return
+
+            embed = discord.Embed(
+                title="Waiting",
+                color=discord.Color.dark_gray(),
+            )
+            embed.set_image(url=f"attachment://{output.name}")
+            embed.set_footer(
+                text=f"Requested by {ctx.author}",
+                icon_url=ctx.author.display_avatar.url,
+            )
+            await ctx.send(embed=embed, file=discord.File(str(output)))
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send("An error occurred while processing the image.")
+        finally:
+            output.unlink(missing_ok=True)
+
+
+def _generate_waiting(output_path: str, text: str) -> bool:
+    try:
+        base = Image.open("assets/memes/waiting.jpg").convert("RGBA")
+        w, h = base.size
+
+        draw = ImageDraw.Draw(base)
+
+        font_size = 70
+        font_path = "assets/fonts/coolvetica/Coolvetica Rg.otf"
+        while font_size > 12:
+            font = ImageFont.truetype(font_path, font_size)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            if bbox[2] - bbox[0] <= w - 40:
+                break
+            font_size -= 2
+
+        text_w = bbox[2] - bbox[0]
+        text_x = (w - text_w) // 2
+        text_y = 60 if font_size >= 30 else 25
+
+        draw.text((text_x, text_y), text, fill="white", font=font)
+
+        base.save(output_path, "PNG")
+        return True
+    except Exception:
+        return False
+
+
+def _generate_rip(avatar_bytes: bytes, output_path: str, name: str) -> bool:
+    try:
+        base = Image.open("assets/memes/rip.jpg").convert("RGBA")
+        w, h = base.size
+
+        avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+        avatar = avatar.resize((100, 100), Image.LANCZOS)
+
+        avatar_x = (w - 100) // 2
+        avatar_y = 155
+        base.paste(avatar, (avatar_x, avatar_y))
+
+        draw = ImageDraw.Draw(base)
+
+        font_size = 30
+        font_path = "/usr/share/fonts/truetype/msttcorefonts/Impact.ttf"
+        while font_size > 8:
+            font = ImageFont.truetype(font_path, font_size)
+            bbox = draw.textbbox((0, 0), name, font=font)
+            if bbox[2] - bbox[0] <= w - 20:
+                break
+            font_size -= 2
+
+        text_w = bbox[2] - bbox[0]
+        text_x = (w - text_w) // 2
+        text_y = avatar_y + 100 + 15
+
+        draw.text((text_x, text_y), name, fill="black", font=font)
+
+        base.save(output_path, "PNG")
+        return True
+    except Exception:
+        return False
 
 
 async def setup(bot: Amenity) -> None:

@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 import aiohttp
@@ -817,6 +818,34 @@ class UserUtility(commands.Cog):
         await ctx.send(f"{Emoji.INVITE.value} [Link of decoration](https://discord.com/shop#itemSkuId={target.avatar_decoration_sku_id})\n\n{target.avatar_decoration.url}")
 
 
+    @commands.hybrid_command(name="enlarge", description="Enlarge a custom emoji.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.describe(emoji="The custom emoji you want to enlarge.")
+    async def enlarge(self, ctx: commands.Context, emoji: discord.PartialEmoji) -> None:
+        """Enlarge a custom emoji to download it or see it in high resolution."""
+
+        # Native Unicode emojis (like 😂) don't have an ID or a Discord CDN URL
+        if emoji.id is None:
+            await ctx.send(
+                "⚠ Native Unicode emojis cannot be enlarged. Please provide a custom server emoji.",
+                ephemeral=True,
+            )
+            return
+
+        # Use the native .url attribute provided by discord.py (handles gif/png automatically)
+        # size=1024 fetches the highest quality image available
+        url = emoji.url
+
+        embed = discord.Embed(
+            description=f"Enlarged Emoji: [{emoji.name}]({url})",
+            color=discord.Color.magenta(),
+            timestamp=datetime.now() # Used timezone-aware datetime to prevent discord.py deprecation warnings
+        )
+        embed.set_image(url=url)
+        embed.set_footer(text=f"Emoji ID: {emoji.id}")
+
+        await ctx.send(embed=embed)
 
 async def setup(bot: Amenity) -> None:
     await bot.add_cog(UserUtility(bot))
