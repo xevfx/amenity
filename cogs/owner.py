@@ -8,8 +8,26 @@ from discord.ext import commands
 
 from api.buttons import confirm_action
 from api.commands_export import export_commands
+from api.paginator import EmbedPaginator, PaginatorHelper
 from core.amenity import Amenity
 from core.cache import cache
+from core.checks import (
+    add_premium,
+    blacklist_user,
+    disable_command,
+    enable_command,
+    generate_premium_keys,
+    get_premium_expires_at,
+    is_command_disabled,
+    is_user_blacklisted,
+    list_premium_keys,
+    parse_duration,
+    remove_premium,
+    revoke_premium,
+    revoke_premium_key,
+    unblacklist_user,
+)
+from core.installed_users import InstalledUser, list_installed_users
 
 
 class Owner(commands.Cog):
@@ -41,6 +59,91 @@ class Owner(commands.Cog):
         with suppress(ValueError):
             return int(value)
         return None
+
+    def _parse_id(self, value: str) -> int:
+        value = value.strip()
+        if value.startswith("<@") and value.endswith(">"):
+            value = value.removeprefix("<@").removeprefix("!").removesuffix(">")
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise commands.BadArgument("Provide a valid user ID.") from exc
+
+    def _find_command_name(self, name: str) -> str | None:
+        normalized = " ".join(name.lower().strip().split())
+        if not normalized:
+            return None
+        command = self.bot.get_command(normalized)
+        if command is None:
+            return normalized
+        return command.qualified_name.lower()
+
+    async def _send_owner_reply(self, ctx: commands.Context, message: str) -> None:
+        await ctx.reply(message, mention_author=False)
+
+    def _validate_duration(self, duration: str) -> str:
+        try:
+            parse_duration(duration)
+        except ValueError as exc:
+            raise commands.BadArgument(str(exc)) from exc
+        return duration.lower()
+
+    def _format_premium_status(self, expires_at: int | None) -> str:
+        if expires_at is None:
+            return "No active premium."
+        return f"Premium expires <t:{expires_at}:R> (`{expires_at}`)."
+
+    async def _format_installed_user(self, user: InstalledUser, index: int) -> str:
+        cached_user = self.bot.get_user(user.user_id)
+        if cached_user is None:
+            try:
+                cached_user = await self.bot.fetch_user(user.user_id)
+            except discord.HTTPException:
+                cached_user = None
+
+        label = cached_user.mention if cached_user is not None else f"`{user.user_id}`"
+        username = user.username or "unknown"
+        display_name = user.display_name or username
+        return (
+            f"`{index}.` {label} (`{user.user_id}`)\n"
+            f"Name: `{display_name}` / `{username}` | Commands: `{user.command_count}` | Last: <t:{user.last_seen}:R>"
+        )
+
+    async def _format_installed_users(self, users: list[InstalledUser]) -> list[str]:
+        lines: list[str] = []
+        for index, user in enumerate(users, start=1):
+            lines.append(await self._format_installed_user(user, index))
+        return lines
+
+    async def _send_generated_premium_keys(
+        self,
+        ctx: commands.Context,
+        premium_duration: str,
+        key_lifespan: str,
+        count: int = 1,
+    ) -> None:
+        premium_duration = self._validate_duration(premium_duration)
+        key_lifespan = self._validate_duration(key_lifespan)
+        keys = generate_premium_keys(premium_duration, key_lifespan, count)
+        formatted = "\n".join(key.key for key in keys)
+        await self._send_owner_reply(
+            ctx,
+            (
+                f"Generated `{len(keys)}` premium key(s).\n"
+                f"Premium duration: `{premium_duration}`\n"
+                f"Key lifespan: `{key_lifespan}`\n"
+                f"Use before: <t:{keys[0].key_expires_at}:R>\n"
+                f"```text\n{formatted}\n```"
+            ),
+        )
+
+    async def _revoke_premium_keys(self, ctx: commands.Context, keys: tuple[str, ...]) -> None:
+        if not keys:
+            await self._send_owner_reply(ctx, "Provide at least one premium key.")
+            return
+
+        revoked = [key for key in keys if revoke_premium_key(key)]
+        await self._send_owner_reply(ctx, f"Revoked `{len(revoked)}` of `{len(keys)}` premium key(s).")
 
     def _get_cgroup_path(self, controller: str | None) -> Path | None:
         try:
@@ -157,6 +260,28 @@ class Owner(commands.Cog):
         )
         await ctx.reply(embed=embed, mention_author=False)
 
+    @commands.command(name="users", hidden=True)
+    @commands.is_owner()
+    async def users(self, ctx: commands.Context) -> None:
+        """
+        Show users who have used bot commands.
+        """
+        installed_users = list_installed_users()
+        if not installed_users:
+            await self._send_owner_reply(ctx, "No command users have been tracked yet.")
+            return
+
+        lines = await self._format_installed_users(installed_users)
+        embeds = PaginatorHelper.create_adaptive_embeds(
+            lines,
+            "Tracked Command Users",
+            items_per_page=8,
+            max_chars=3500,
+            color=discord.Color.blue(),
+        )
+        view = EmbedPaginator(embeds, author_id=ctx.author.id)
+        await ctx.reply(embed=embeds[0], view=view, mention_author=False)
+
     @commands.command(name="restart", hidden=True)
     @commands.is_owner()
     async def restart(self, ctx: commands.Context) -> None:
@@ -199,6 +324,181 @@ class Owner(commands.Cog):
             f"Exported commands to `{output_path}`",
             mention_author=False,
         )
+
+    @commands.group(name="blacklist", invoke_without_command=True, hidden=True, aliases=["bl"])
+    @commands.is_owner()
+    async def blacklist(self, ctx: commands.Context) -> None:
+        """
+        Manage blacklisted users.
+        """
+        await ctx.send_help(ctx.command)
+
+    @blacklist.command(name="add", hidden=True, aliases=["a"])
+    @commands.is_owner()
+    async def blacklist_add(self, ctx: commands.Context, user_id: str, *, reason: str | None = None) -> None:
+        user_id_int = self._parse_id(user_id)
+        blacklist_user(user_id_int, reason)
+        await self._send_owner_reply(ctx, f"Blacklisted `{user_id_int}`.")
+
+    @blacklist.command(name="remove", aliases=["r"], hidden=True)
+    @commands.is_owner()
+    async def blacklist_remove(self, ctx: commands.Context, user_id: str) -> None:
+        user_id_int = self._parse_id(user_id)
+        removed = unblacklist_user(user_id_int)
+        status = "Removed" if removed else "Not found"
+        await self._send_owner_reply(ctx, f"{status}: `{user_id_int}`.")
+
+    @blacklist.command(name="check", aliases=["c"], hidden=True)
+    @commands.is_owner()
+    async def blacklist_check(self, ctx: commands.Context, user_id: str) -> None:
+        user_id_int = self._parse_id(user_id)
+        status = "blacklisted" if is_user_blacklisted(user_id_int) else "not blacklisted"
+        await self._send_owner_reply(ctx, f"`{user_id_int}` is {status}.")
+
+    @commands.group(name="command", invoke_without_command=True, hidden=True, aliases=["cmd"])
+    @commands.is_owner()
+    async def command_control(self, ctx: commands.Context) -> None:
+        """
+        Enable or disable commands.
+        """
+        await ctx.send_help(ctx.command)
+
+    @command_control.command(name="disable", hidden=True)
+    @commands.is_owner()
+    async def command_disable(self, ctx: commands.Context, *, command_name: str) -> None:
+        normalized = self._find_command_name(command_name)
+        if normalized is None:
+            await self._send_owner_reply(ctx, "Provide a command name.")
+            return
+        if normalized in {"command", "command disable", "command enable", "blacklist", "premium"}:
+            await self._send_owner_reply(ctx, "That owner management command cannot be disabled.")
+            return
+        disabled = disable_command(normalized)
+        await self._send_owner_reply(ctx, f"Disabled `{disabled}`.")
+
+    @command_control.command(name="enable", hidden=True)
+    @commands.is_owner()
+    async def command_enable(self, ctx: commands.Context, *, command_name: str) -> None:
+        normalized = self._find_command_name(command_name)
+        if normalized is None:
+            await self._send_owner_reply(ctx, "Provide a command name.")
+            return
+        enabled = enable_command(normalized)
+        status = "Enabled" if enabled else "Not disabled"
+        await self._send_owner_reply(ctx, f"{status}: `{normalized}`.")
+
+    @command_control.command(name="check", hidden=True)
+    @commands.is_owner()
+    async def command_check(self, ctx: commands.Context, *, command_name: str) -> None:
+        normalized = self._find_command_name(command_name)
+        if normalized is None:
+            await self._send_owner_reply(ctx, "Provide a command name.")
+            return
+        status = "disabled" if is_command_disabled(normalized) else "enabled"
+        await self._send_owner_reply(ctx, f"`{normalized}` is {status}.")
+
+    @commands.group(name="premium", invoke_without_command=True, hidden=True)
+    @commands.is_owner()
+    async def premium(self, ctx: commands.Context) -> None:
+        """
+        Manage premium expiry and keys.
+        """
+        await ctx.send_help(ctx.command)
+
+    @premium.command(name="add", hidden=True)
+    @commands.is_owner()
+    async def premium_add(self, ctx: commands.Context, user_id: str, duration: str) -> None:
+        user_id_int = self._parse_id(user_id)
+        duration = self._validate_duration(duration)
+        expires_at = add_premium(user_id_int, duration)
+        await self._send_owner_reply(ctx, f"Added `{duration}` premium to `{user_id_int}`. Expires <t:{expires_at}:R>.")
+
+    @premium.command(name="remove", aliases=["deduct"], hidden=True)
+    @commands.is_owner()
+    async def premium_remove(self, ctx: commands.Context, user_id: str, duration: str) -> None:
+        user_id_int = self._parse_id(user_id)
+        duration = self._validate_duration(duration)
+        expires_at = remove_premium(user_id_int, duration)
+        await self._send_owner_reply(
+            ctx,
+            f"Removed `{duration}` premium from `{user_id_int}`. {self._format_premium_status(expires_at)}",
+        )
+
+    @premium.command(name="revoke", hidden=True)
+    @commands.is_owner()
+    async def premium_revoke(self, ctx: commands.Context, user_id: str) -> None:
+        user_id_int = self._parse_id(user_id)
+        revoked = revoke_premium(user_id_int)
+        status = "Revoked" if revoked else "No premium found"
+        await self._send_owner_reply(ctx, f"{status}: `{user_id_int}`.")
+
+    @premium.command(name="check", hidden=True)
+    @commands.is_owner()
+    async def premium_check(self, ctx: commands.Context, user_id: str) -> None:
+        user_id_int = self._parse_id(user_id)
+        expires_at = get_premium_expires_at(user_id_int)
+        await self._send_owner_reply(ctx, f"`{user_id_int}`: {self._format_premium_status(expires_at)}")
+
+    @premium.command(name="generate", aliases=["generate-key", "genkey"], hidden=True)
+    @commands.is_owner()
+    async def premium_generate(
+        self,
+        ctx: commands.Context,
+        premium_duration: str,
+        key_lifespan: str,
+        count: int = 1,
+    ) -> None:
+        await self._send_generated_premium_keys(ctx, premium_duration, key_lifespan, count)
+
+    @premium.command(name="revoke-key", aliases=["revokekey", "revoke-keys", "revokekeys"], hidden=True)
+    @commands.is_owner()
+    async def premium_revoke_key(self, ctx: commands.Context, *keys: str) -> None:
+        await self._revoke_premium_keys(ctx, keys)
+
+    @premium.group(name="keys", invoke_without_command=True, hidden=True)
+    @commands.is_owner()
+    async def premium_keys(self, ctx: commands.Context) -> None:
+        """
+        Manage premium keys.
+        """
+        await ctx.send_help(ctx.command)
+
+    @premium_keys.command(name="generate", aliases=["gen"], hidden=True)
+    @commands.is_owner()
+    async def premium_keys_generate(
+        self,
+        ctx: commands.Context,
+        premium_duration: str,
+        key_lifespan: str,
+        count: int = 1,
+    ) -> None:
+        await self._send_generated_premium_keys(ctx, premium_duration, key_lifespan, count)
+
+    @premium_keys.command(name="revoke", aliases=["remove"], hidden=True)
+    @commands.is_owner()
+    async def premium_keys_revoke(self, ctx: commands.Context, *keys: str) -> None:
+        await self._revoke_premium_keys(ctx, keys)
+
+    @premium_keys.command(name="list", aliases=["ls"], hidden=True)
+    @commands.is_owner()
+    async def premium_keys_list(self, ctx: commands.Context, limit: int = 10) -> None:
+        keys = list_premium_keys(limit)
+        if not keys:
+            await self._send_owner_reply(ctx, "No premium keys found.")
+            return
+
+        lines = []
+        for key in keys:
+            if key.revoked_at is not None:
+                status = "revoked"
+            elif key.used_at is not None:
+                status = f"used by `{key.used_by}`"
+            else:
+                status = "active"
+            lines.append(
+                f"`{key.key}` | {status} | premium `{key.premium_duration}s` | use before <t:{key.key_expires_at}:R>"
+            )
+        await self._send_owner_reply(ctx, "\n".join(lines))
 
 
 async def setup(bot: Amenity) -> None:

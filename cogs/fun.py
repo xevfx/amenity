@@ -17,6 +17,10 @@ from api.emojis import Emoji
 from api.log import log_exception
 from core.amenity import Amenity
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MEME_ASSETS_DIR = PROJECT_ROOT / "assets" / "memes"
+COOLVETICA_FONT = PROJECT_ROOT / "assets" / "fonts" / "coolvetica" / "Coolvetica Rg.otf"
+
 
 class Fun(commands.Cog):
     display_name = "Fun"
@@ -383,7 +387,7 @@ class Fun(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def meme_group(self, ctx: commands.Context) -> None:
         await ctx.reply(
-            "Use /meme rip | waiting",
+            "Use /meme rip | waiting | whiteboard",
             delete_after=5,
             ephemeral=True,
             mention_author=False,
@@ -471,17 +475,139 @@ class Fun(commands.Cog):
             output.unlink(missing_ok=True)
 
 
+    @meme_group.command(
+        name="whiteboard",
+        description="Put text on a whiteboard meme template.",
+    )
+    @app_commands.describe(text="The text to display (max 120 characters).")
+    @commands.cooldown(1, 10, commands.BucketType.user)
+    async def meme_whiteboard(self, ctx: commands.Context, *, text: str) -> None:
+        text = text.strip()
+        if not text:
+            await ctx.send("Please provide some text.")
+            return
+        if len(text) > 120:
+            await ctx.send("Text must be 120 characters or less.")
+            return
+
+        output = Path(f"whiteboard_{ctx.author.id}.png")
+
+        await ctx.defer()
+
+        try:
+            if not _generate_whiteboard(str(output), text):
+                await ctx.send("Failed to generate the image.")
+                return
+
+            embed = discord.Embed(
+                title="Whiteboard",
+                color=discord.Color.dark_gray(),
+            )
+            embed.set_image(url=f"attachment://{output.name}")
+            embed.set_footer(
+                text=f"Requested by {ctx.author}",
+                icon_url=ctx.author.display_avatar.url,
+            )
+            await ctx.send(embed=embed, file=discord.File(str(output)))
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send("An error occurred while processing the image.")
+        finally:
+            output.unlink(missing_ok=True)
+
+
+def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+    lines: list[str] = []
+    for paragraph in text.splitlines() or [text]:
+        words = paragraph.split()
+        if not words:
+            lines.append("")
+            continue
+
+        current = words[0]
+        for word in words[1:]:
+            candidate = f"{current} {word}"
+            bbox = draw.textbbox((0, 0), candidate, font=font)
+            if bbox[2] - bbox[0] <= max_width:
+                current = candidate
+                continue
+
+            lines.extend(_split_long_line(draw, current, font, max_width))
+            current = word
+
+        lines.extend(_split_long_line(draw, current, font, max_width))
+    return lines
+
+
+def _split_long_line(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    max_width: int,
+) -> list[str]:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    if bbox[2] - bbox[0] <= max_width:
+        return [text]
+
+    lines: list[str] = []
+    current = ""
+    for char in text:
+        candidate = f"{current}{char}"
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if current and bbox[2] - bbox[0] > max_width:
+            lines.append(current)
+            current = char
+        else:
+            current = candidate
+
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _generate_whiteboard(output_path: str, text: str) -> bool:
+    try:
+        base = Image.open(MEME_ASSETS_DIR / "whiteboard.png").convert("RGBA")
+        draw = ImageDraw.Draw(base)
+
+        box_x, box_y = 150, 110
+        box_w, box_h = 520, 245
+        line_spacing = 8
+
+        font_size = 58
+        while font_size > 14:
+            font = ImageFont.truetype(str(COOLVETICA_FONT), font_size)
+            lines = _wrap_text(draw, text, font, box_w)
+            bboxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
+            line_heights = [bbox[3] - bbox[1] for bbox in bboxes]
+            text_h = sum(line_heights) + line_spacing * max(len(lines) - 1, 0)
+            if text_h <= box_h:
+                break
+            font_size -= 2
+
+        text_y = box_y + (box_h - text_h) // 2
+        for line, bbox, line_h in zip(lines, bboxes, line_heights, strict=False):
+            text_w = bbox[2] - bbox[0]
+            text_x = box_x + (box_w - text_w) // 2
+            draw.text((text_x, text_y - bbox[1]), line, fill=(32, 32, 32), font=font)
+            text_y += line_h + line_spacing
+
+        base.save(output_path, "PNG")
+        return True
+    except Exception:
+        return False
+
+
 def _generate_waiting(output_path: str, text: str) -> bool:
     try:
-        base = Image.open("assets/memes/waiting.jpg").convert("RGBA")
+        base = Image.open(MEME_ASSETS_DIR / "waiting.jpg").convert("RGBA")
         w, h = base.size
 
         draw = ImageDraw.Draw(base)
 
         font_size = 70
-        font_path = "assets/fonts/coolvetica/Coolvetica Rg.otf"
         while font_size > 12:
-            font = ImageFont.truetype(font_path, font_size)
+            font = ImageFont.truetype(str(COOLVETICA_FONT), font_size)
             bbox = draw.textbbox((0, 0), text, font=font)
             if bbox[2] - bbox[0] <= w - 40:
                 break
@@ -501,7 +627,7 @@ def _generate_waiting(output_path: str, text: str) -> bool:
 
 def _generate_rip(avatar_bytes: bytes, output_path: str, name: str) -> bool:
     try:
-        base = Image.open("assets/memes/rip.jpg").convert("RGBA")
+        base = Image.open(MEME_ASSETS_DIR / "rip.jpg").convert("RGBA")
         w, h = base.size
 
         avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
@@ -514,9 +640,8 @@ def _generate_rip(avatar_bytes: bytes, output_path: str, name: str) -> bool:
         draw = ImageDraw.Draw(base)
 
         font_size = 30
-        font_path = "/usr/share/fonts/truetype/msttcorefonts/Impact.ttf"
         while font_size > 8:
-            font = ImageFont.truetype(font_path, font_size)
+            font = ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/Impact.ttf", font_size)
             bbox = draw.textbbox((0, 0), name, font=font)
             if bbox[2] - bbox[0] <= w - 20:
                 break

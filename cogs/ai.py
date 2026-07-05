@@ -14,6 +14,7 @@ from discord.ext import commands
 
 from api.log import log_exception
 from api.paginator import EmbedPaginator
+from core.checks import PremiumRequired, has_premium, premium_required
 
 if TYPE_CHECKING:
     from core.amenity import Amenity
@@ -35,6 +36,10 @@ class AIModel:
     env_var: str | None
 
 
+class AIUserError(Exception):
+    """Expected AI provider error that should be shown without exception logging."""
+
+
 AI_MODELS: dict[str, AIModel] = {
     "google/gemini-2.5-flash": AIModel(
         key="google/gemini-2.5-flash",
@@ -50,19 +55,12 @@ AI_MODELS: dict[str, AIModel] = {
         model_id="openai/gpt-oss-120b",
         env_var="GROQ",
     ),
-    "groq/openai/gpt-oss-20b": AIModel(
-        key="groq/openai/gpt-oss-20b",
+    "groq/compound": AIModel(
+        key="groq/compound",
         provider="Groq",
-        label="GPT OSS 20B",
-        model_id="openai/gpt-oss-20b",
+        label="Compound",
+        model_id="groq/compound",
         env_var="GROQ",
-    ),
-    "pollinations/openai-fast": AIModel(
-        key="pollinations/openai-fast",
-        provider="Pollinations",
-        label="OpenAI Fast",
-        model_id="openai-fast",
-        env_var=None,
     ),
     "openrouter/openai/gpt-oss-120b:free": AIModel(
         key="openrouter/openai/gpt-oss-120b:free",
@@ -96,14 +94,13 @@ class AI(commands.Cog):
             callback=self.make_message_professional,
             type=discord.AppCommandType.message,
         )
-        self.fix_grammar_menu = app_commands.ContextMenu(
-            name="Fix grammer by AI",
-            callback=self.fix_message_grammar,
-            type=discord.AppCommandType.message,
-        )
+        for menu in (
+            self.summarize_menu,
+            self.professional_menu,
+        ):
+            menu.add_check(self._premium_interaction_check)
         self.bot.tree.add_command(self.summarize_menu)
         self.bot.tree.add_command(self.professional_menu)
-        self.bot.tree.add_command(self.fix_grammar_menu)
 
     def cog_unload(self) -> None:
         if not self.aiohttp.closed:
@@ -111,7 +108,6 @@ class AI(commands.Cog):
         for menu in (
             self.summarize_menu,
             self.professional_menu,
-            self.fix_grammar_menu,
         ):
             self.bot.tree.remove_command(
                 menu.name,
@@ -165,7 +161,7 @@ class AI(commands.Cog):
             "resource exhausted",
         )
         if status == 429 or any(marker in text for marker in usage_markers):
-            return "maximum usage reached"
+            raise AIUserError("maximum usage reached")
         return message or f"{provider} returned HTTP {status}."
 
     async def _generate_with_google(self, model: AIModel, prompt: str) -> str:
@@ -362,12 +358,11 @@ class AI(commands.Cog):
                 description=page,
                 color=discord.Color.blurple(),
             )
-            embed.add_field(name="Model", value=f"{model.provider}: {model.label}", inline=False)
-            embed.add_field(
-                name=prompt_label,
-                value=discord.utils.escape_markdown(prompt[:PROMPT_PREVIEW_CHARS]) or "\u200b",
-                inline=False,
+            extra = (
+                f"#- {model.provider}: {model.label}\n"
+                f"#- Prompt: {discord.utils.escape_markdown(prompt[:PROMPT_PREVIEW_CHARS])}"
             )
+            embed.add_field(name="Extra", value=extra or "\u200b", inline=False)
             embed.set_footer(
                 text=f"Requested by {author} • Page {index}/{total_pages}",
                 icon_url=author.display_avatar.url,
@@ -479,6 +474,9 @@ class AI(commands.Cog):
 
         try:
             output = await self._generate(model, prompt)
+        except AIUserError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
         except Exception as exc:
             log_exception(exc)
             await interaction.followup.send(str(exc), ephemeral=True)
@@ -499,6 +497,11 @@ class AI(commands.Cog):
             ephemeral=True,
         )
 
+    async def _premium_interaction_check(self, interaction: discord.Interaction) -> bool:
+        if await self.bot.is_owner(interaction.user) or has_premium(interaction.user.id):
+            return True
+        raise PremiumRequired("This command requires premium.")
+
     @commands.hybrid_command(
         name="ai",
         description="Ask one AI model from Google, Groq, Pollinations, or OpenRouter.",
@@ -511,6 +514,7 @@ class AI(commands.Cog):
     )
     @commands.cooldown(1, 15, commands.BucketType.user)
     @commands.max_concurrency(5, commands.BucketType.default, wait=True)
+    @premium_required()
     async def ai(
         self,
         ctx: commands.Context,
@@ -533,6 +537,9 @@ class AI(commands.Cog):
 
         try:
             response = await self._generate(selected_model, query)
+        except AIUserError as exc:
+            await ctx.send(str(exc))
+            return
         except Exception as exc:
             log_exception(exc)
             await ctx.send(str(exc))
@@ -552,7 +559,7 @@ class AI(commands.Cog):
 
     @commands.hybrid_command(
         name="image-gen",
-        description="Generate an image with Pollinations free image generation.",
+        description="Generate an image with Pollinations image generation.",
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -561,6 +568,7 @@ class AI(commands.Cog):
     )
     @commands.cooldown(1, 20, commands.BucketType.user)
     @commands.max_concurrency(3, commands.BucketType.default, wait=True)
+    @premium_required()
     async def image_gen(
         self,
         ctx: commands.Context,
@@ -576,6 +584,9 @@ class AI(commands.Cog):
 
         try:
             image_bytes = await self._generate_pollinations_image(query)
+        except AIUserError as exc:
+            await ctx.send(str(exc))
+            return
         except Exception as exc:
             log_exception(exc)
             await ctx.send(str(exc))
@@ -592,6 +603,54 @@ class AI(commands.Cog):
         embed.set_image(url="attachment://pollinations-image.jpg")
         embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
         await ctx.send(embed=embed, file=file)
+
+    @commands.hybrid_command(
+        name="fix-grammar",
+        description="Fix grammar, spelling, punctuation, and clarity in text.",
+    )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.describe(text="The text to fix.")
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    @commands.max_concurrency(5, commands.BucketType.default, wait=True)
+    @premium_required()
+    async def fix_grammar(
+        self,
+        ctx: commands.Context,
+        *,
+        text: str,
+    ) -> None:
+        query = text.strip()
+        if not query:
+            await ctx.send("Please provide text to fix.")
+            return
+
+        await ctx.defer()
+        model = AI_MODELS[SUMMARY_MODEL_KEY]
+
+        try:
+            response = await self._generate(model, self._build_grammar_prompt(query))
+        except AIUserError as exc:
+            await ctx.send(str(exc))
+            return
+        except Exception as exc:
+            log_exception(exc)
+            await ctx.send(str(exc))
+            return
+
+        pages = self._build_paginated_embeds(
+            prompt=query,
+            model=model,
+            response=response,
+            author=ctx.author,
+        )
+        for page in pages:
+            page.title = "Grammar Fix"
+        await self._send_paginated_response(
+            destination=ctx,
+            pages=pages,
+            author_id=ctx.author.id,
+        )
 
     async def summarize_message(
         self,

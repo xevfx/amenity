@@ -4,15 +4,29 @@ import pkgutil
 from pathlib import Path
 
 import discord
+from discord import app_commands
 
 # import asyncio
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from api.log import (
     log_command_error,
     log_command_usage,
 )
+from core.checks import (
+    CommandDisabled,
+    PremiumRequired,
+    UserBlacklisted,
+    cleanup_expired_premium,
+    command_enabled_predicate,
+    initialize_checks,
+    user_not_blacklisted_predicate,
+)
 from core.help import AmenityHelpCommand
+from core.installed_users import (
+    flush_installed_users as flush_pending_installed_users,
+)
+from core.installed_users import init_installed_users_db, track_installed_user
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +61,13 @@ class Amenity(commands.Bot):
         )
 
     async def setup_hook(self) -> None:
+        await initialize_checks()
+        init_installed_users_db()
+        self.add_check(user_not_blacklisted_predicate)
+        self.add_check(command_enabled_predicate)
+        self.check_premium_expiry.start()
+        self.flush_installed_users.start()
+
         try:
             await self.load_extension("jishaku")
         except Exception as e:
@@ -75,6 +96,32 @@ class Amenity(commands.Bot):
         #     await self.tree.sync(guild=guild)
         # else:
         await self.tree.sync()
+
+    async def close(self) -> None:
+        self.check_premium_expiry.cancel()
+        self.flush_installed_users.cancel()
+        flush_pending_installed_users()
+        await super().close()
+
+    @tasks.loop(hours=1)
+    async def check_premium_expiry(self) -> None:
+        removed = cleanup_expired_premium()
+        if removed:
+            logger.info("Removed %s expired premium subscription(s).", removed)
+
+    @check_premium_expiry.before_loop
+    async def before_check_premium_expiry(self) -> None:
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=30)
+    async def flush_installed_users(self) -> None:
+        flushed = flush_pending_installed_users()
+        if flushed:
+            logger.info("Flushed %s tracked command user(s).", flushed)
+
+    @flush_installed_users.before_loop
+    async def before_flush_installed_users(self) -> None:
+        await self.wait_until_ready()
 
     async def on_ready(self) -> None:
         # if not self.user:
@@ -124,6 +171,15 @@ class Amenity(commands.Bot):
             await context.send_help(context.command)
             return
 
+        if isinstance(exception, UserBlacklisted | CommandDisabled | PremiumRequired):
+            await context.reply(
+                str(exception),
+                ephemeral=True,
+                mention_author=False,
+                delete_after=5,
+            )
+            return
+
         if isinstance(exception, commands.CheckFailure):
             await context.reply(
                 "You don't have permission to use this command.",
@@ -149,8 +205,15 @@ class Amenity(commands.Bot):
         raise exception
 
     async def on_command_completion(self, context: commands.Context) -> None:
-
+        track_installed_user(context.author)
         await log_command_usage(context)
+
+    async def on_app_command_completion(
+        self,
+        interaction: discord.Interaction,
+        command: app_commands.Command,
+    ) -> None:
+        track_installed_user(interaction.user)
 
     # async def on_app_command_completion(
     #     self,

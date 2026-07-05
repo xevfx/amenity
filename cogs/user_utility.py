@@ -19,6 +19,22 @@ from core.amenity import Amenity
 QR_GRADIENT = ("#0B0B0D", "#1A1F2E")
 QR_BACK_COLOR = "white"
 QR_GLOW_COLOR = "#1e88e5"
+EMBED_DESCRIPTION_LIMIT = 4096
+EMBED_FIELD_VALUE_LIMIT = 1024
+CODE_BLOCK_OVERHEAD = 8
+
+
+def _truncate(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    if limit <= 1:
+        return value[:limit]
+    return f"{value[: limit - 1]}…"
+
+
+def _code_block(value: str, *, limit: int = EMBED_FIELD_VALUE_LIMIT) -> str:
+    truncated = _truncate(value.replace("```", "`\u200b``"), limit - CODE_BLOCK_OVERHEAD)
+    return f"```\n{truncated}\n```"
 
 
 def _safe_unlink(path: str) -> None:
@@ -289,7 +305,11 @@ class UserUtility(commands.Cog):
         embed.add_field(name="Created At", value=f"<t:{created_timestamp}:F>\n<t:{created_timestamp}:R>", inline=False)
         embed.add_field(name="Badges", value=self._format_user_badges(profile), inline=False)
         embed.add_field(name="Avatar", value=f"[Open avatar]({profile.display_avatar.url})", inline=True)
-        embed.add_field(name="Banner", value=f"[Open banner]({banner.url})" if banner is not None else "None", inline=True)
+        embed.add_field(
+            name="Banner",
+            value=f"[Open banner]({banner.url})" if banner is not None else "None",
+            inline=True,
+        )
         if accent_color is not None:
             embed.add_field(name="Accent Color", value=f"`{accent_color}`", inline=True)
 
@@ -351,10 +371,11 @@ class UserUtility(commands.Cog):
         color: discord.Color = 0x00FFFF,
         fields: list[tuple[str, str]] | None = None,
     ) -> None:
-        embed = discord.Embed(title=title, description=description, color=color)
+        safe_description = _truncate(description, EMBED_DESCRIPTION_LIMIT) if description is not None else None
+        embed = discord.Embed(title=title, description=safe_description, color=color)
         if fields:
             for name, value in fields:
-                embed.add_field(name=name, value=value, inline=False)
+                embed.add_field(name=name, value=_truncate(value, EMBED_FIELD_VALUE_LIMIT), inline=False)
         embed.set_image(url=f"attachment://{filename}")
         embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
         await ctx.send(embed=embed, file=discord.File(filename))
@@ -737,8 +758,8 @@ class UserUtility(commands.Cog):
 
             result = simple_eval(expression)
             embed = discord.Embed(title="Math Calculation", color=discord.Color.purple())
-            embed.add_field(name="Expression", value=f"```\n{expression}\n```", inline=False)
-            embed.add_field(name="Result", value=f"```\n{result}\n```", inline=False)
+            embed.add_field(name="Expression", value=_code_block(expression), inline=False)
+            embed.add_field(name="Result", value=_code_block(str(result)), inline=False)
             await ctx.send(embed=embed)
         except Exception:
             await ctx.send("An error occurred")
@@ -767,8 +788,8 @@ class UserUtility(commands.Cog):
                 return
 
             embed = discord.Embed(title="Binary to Text Conversion", color=0xADD8E6)
-            embed.add_field(name=" Input (Binary)", value=f"```\n{message}\n```", inline=False)
-            embed.add_field(name=" Output (Text)", value=f"```\n{ascii_string}\n```", inline=False)
+            embed.add_field(name=" Input (Binary)", value=_code_block(message), inline=False)
+            embed.add_field(name=" Output (Text)", value=_code_block(ascii_string), inline=False)
             await ctx.send(embed=embed)
 
         else:
@@ -781,12 +802,12 @@ class UserUtility(commands.Cog):
             embed = discord.Embed(title="Text to Binary Conversion", color=discord.Color.blue())
             embed.add_field(
                 name="Input (Text)",
-                value=f"```\n{message}\n```",
+                value=_code_block(message),
                 inline=False,
             )
             embed.add_field(
                 name="Output (Binary)",
-                value=f"```\n{binary_result}\n```",
+                value=_code_block(binary_result),
                 inline=False,
             )
             await ctx.send(embed=embed)
@@ -812,12 +833,12 @@ class UserUtility(commands.Cog):
             )
             embed.add_field(
                 name=f"Original ({source_lang.title()})",
-                value=f"```\n{text}\n```",
+                value=_code_block(text),
                 inline=False,
             )
             embed.add_field(
                 name="Translated (English)",
-                value=f"```\n{translated.text}\n```",
+                value=_code_block(translated.text),
                 inline=False,
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -855,18 +876,18 @@ class UserUtility(commands.Cog):
             )
             embed.add_field(
                 name=f"Original ({source_lang.title()})",
-                value=f"```\n{text}\n```",
+                value=_code_block(text),
                 inline=False,
             )
             embed.add_field(
                 name=f"Translated ({dest_name.title()})",
-                value=f"```\n{translated.text}\n```",
+                value=_code_block(translated.text),
                 inline=False,
             )
             await ctx.send(embed=embed)
         except Exception as e:
             # await ctx.send("An error occurred during translation")
-            await ctx.send(e)
+            await ctx.send(str(e))
 
 
     @commands.hybrid_command(name="deco", description="Get a user avatar decoration.")

@@ -1,5 +1,65 @@
 import re
 import time as tm
+from datetime import UTC, datetime, timedelta, timezone
+
+
+def _timezone_from_string(timezone_str: str | None) -> timezone | None:
+    if timezone_str is None:
+        return None
+
+    cleaned = timezone_str.strip().lower()
+    if cleaned in {"utc", "gmt", "z"}:
+        return UTC
+
+    offset_match = re.match(r"^(?:utc|gmt)?([+-])(\d{1,2})(?::?(\d{2}))?$", cleaned)
+    if not offset_match:
+        raise ValueError("Invalid timezone format. Use UTC or UTC+5:45.")
+
+    sign, hours_str, minutes_str = offset_match.groups()
+    hours = int(hours_str)
+    minutes = int(minutes_str or 0)
+    if hours > 14 or minutes > 59:
+        raise ValueError("Invalid timezone offset.")
+    if hours == 14 and minutes:
+        raise ValueError("UTC offsets cannot exceed 14 hours.")
+
+    delta = timedelta(hours=hours, minutes=minutes)
+    if sign == "-":
+        delta = -delta
+    return timezone(delta)
+
+
+def _clock_time_to_seconds(time_str: str) -> int:
+    clock_match = re.match(
+        r"^(\d{1,2})(?::(\d{2}))?\s*([ap]m)?(?:\s+((?:utc|gmt|z)?[+-]\d{1,2}(?::?\d{2})?|utc|gmt|z))?$",
+        time_str.lower(),
+    )
+    if not clock_match:
+        raise ValueError("Invalid clock time format.")
+
+    hour = int(clock_match.group(1))
+    minute = int(clock_match.group(2) or 0)
+    meridiem = clock_match.group(3)
+    tzinfo = _timezone_from_string(clock_match.group(4))
+
+    if minute > 59:
+        raise ValueError("Minute must be between 0 and 59.")
+
+    if meridiem:
+        if hour < 1 or hour > 12:
+            raise ValueError("Hour must be between 1 and 12 when using am/pm.")
+        hour %= 12
+        if meridiem == "pm":
+            hour += 12
+    elif hour > 23:
+        raise ValueError("Hour must be between 0 and 23.")
+
+    now = datetime.now(tzinfo) if tzinfo else datetime.now().astimezone()
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+
+    return int(target.timestamp() - tm.time())
 
 
 def StringToTime(time_str: str) -> int:
@@ -7,6 +67,7 @@ def StringToTime(time_str: str) -> int:
     Parse time string and return seconds.
     Supports formats: 1s, 1m, 1h, 1d, 1w, 1sec, 1min, 1hrs, etc.
     Also supports Discord timestamps like <t:1778847300:t>
+    Also supports clock times like 2:25am, 14:25, 2:25am UTC, or 2:25am UTC+5:45.
 
     Args:
         time_str: Time string like "1h", "30m", "1d2h"
@@ -47,9 +108,13 @@ def StringToTime(time_str: str) -> int:
         return timestamp - int(tm.time())
 
     normalized = cleaned.lower()
+    clock_pattern = r"^\d{1,2}(?::\d{2})?\s*(?:[ap]m)?(?:\s+(?:(?:utc|gmt|z)?[+-]\d{1,2}(?::?\d{2})?|utc|gmt|z))?$"
+    if re.match(clock_pattern, normalized):
+        return _clock_time_to_seconds(normalized)
+
     valid_pattern = r"^(\d+(?:\.\d+)?\s*[a-zA-Z]+)+$"
     if not re.match(valid_pattern, normalized):
-        raise ValueError("Invalid time format. Use format like '1h', '30m', '1d'")
+        raise ValueError("Invalid time format. Use format like '1h', '30m', '1d', or '2:25am UTC'")
 
     segment_pattern = r"(\d+(?:\.\d+)?)\s*([a-zA-Z]+)"
     segments = re.findall(segment_pattern, normalized)
