@@ -4,8 +4,10 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import discord
+if TYPE_CHECKING:
+    import discord
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DB_PATH = DATA_DIR / "installed_users.db"
