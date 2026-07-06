@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from datetime import datetime
 from typing import TYPE_CHECKING
 from urllib.parse import quote_plus
 
-import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from api.emojis import Emoji
+from api.http import close_http_session, create_http_session, fetch_json
 from api.log import log_exception
 
 if TYPE_CHECKING:
@@ -24,26 +23,16 @@ class Github(commands.Cog):
 
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
-        self.aiohttp = aiohttp.ClientSession()
+        self.aiohttp = create_http_session()
 
     def cog_unload(self) -> None:
-        if not self.aiohttp.closed:
-            self.bot.loop.create_task(self.aiohttp.close())
+        close_http_session(self.aiohttp, self.bot.loop)
 
     async def _fetch_json(self, url: str) -> tuple[dict | None, int | None]:
-        try:
-            async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                status = resp.status
-                if status != 200:
-                    return None, status
-                return await resp.json(), status
-        except (TimeoutError, aiohttp.ClientError):
-            return None, None
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log_exception(exc)
-            return None, None
+        data, status = await fetch_json(self.aiohttp, url)
+        if isinstance(data, dict):
+            return data, status
+        return None, status
 
     @commands.hybrid_group(
         name="github",
@@ -239,72 +228,70 @@ class Github(commands.Cog):
         api_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
         headers = {"User-Agent": "Discord-Bot-PR-Fetcher"}
 
-        async with (
-            aiohttp.ClientSession() as session,
-            session.get(api_url, headers=headers) as resp,
-        ):
-            if resp.status == 404:
-                embed = discord.Embed(
-                    title=f"{Emoji.CROSS.value} PR Not Found",
-                    description=f"Could not find PR #{pr_number} under `{owner}/{repo}`.",
-                    color=discord.Color.red(),
-                )
-            elif resp.status != 200:
-                embed = discord.Embed(
-                    title=f"{Emoji.CROSS.value} API Failure",
-                    description=f"GitHub API returned code `{resp.status}`.",
-                    color=discord.Color.red(),
-                )
+        data, status = await fetch_json(self.aiohttp, api_url, headers=headers)
+        if status == 404:
+            embed = discord.Embed(
+                title=f"{Emoji.CROSS.value} PR Not Found",
+                description=f"Could not find PR #{pr_number} under `{owner}/{repo}`.",
+                color=discord.Color.red(),
+            )
+        elif status != 200 or not isinstance(data, dict):
+            embed = discord.Embed(
+                title=f"{Emoji.CROSS.value} API Failure",
+                description=f"GitHub API returned code `{status}`.",
+                color=discord.Color.red(),
+            )
+        else:
+            # 2. Extract explicit details
+            title = data.get("title", "No Title Provided")
+            author = data["user"]["login"]
+            avatar = data["user"]["avatar_url"]
+
+            # Status evaluation rules (Merged vs Closed vs Open)
+            state = data.get("state", "open").upper()
+            if data.get("merged"):
+                state = "MERGED"
+                color = discord.Color.purple()
             else:
-                data = await resp.json()
+                color = discord.Color.green() if state == "OPEN" else discord.Color.red()
 
-                # 2. Extract explicit details
-                title = data.get("title", "No Title Provided")
-                author = data["user"]["login"]
-                avatar = data["user"]["avatar_url"]
+            # Line statistics changes metrics
+            additions = data.get("additions", 0)
+            deletions = data.get("deletions", 0)
+            changed_files = data.get("changed_files", 0)
+            commits = data.get("commits", 0)
 
-                # Status evaluation rules (Merged vs Closed vs Open)
-                state = data.get("state", "open").upper()
-                if data.get("merged"):
-                    state = "MERGED"
-                    color = discord.Color.purple()
-                else:
-                    color = discord.Color.green() if state == "OPEN" else discord.Color.red()
+            # Branches tracking structural pointers
+            head_branch = data["head"]["ref"]
+            base_branch = data["base"]["ref"]
 
-                # Line statistics changes metrics
-                additions = data.get("additions", 0)
-                deletions = data.get("deletions", 0)
-                changed_files = data.get("changed_files", 0)
-                commits = data.get("commits", 0)
+            # Timestamp conversion parsing loop
+            created_raw = data["created_at"]
+            dt = datetime.strptime(created_raw, "%Y-%m-%dT%H:%M:%SZ")
+            discord_ts = f"<t:{int(dt.timestamp())}:F>"
 
-                # Branches tracking structural pointers
-                head_branch = data["head"]["ref"]
-                base_branch = data["base"]["ref"]
+            # 3. Design output layout metrics block representation
+            description = (
+                f"{Emoji.FILE.value} **Repository:** [{owner}/{repo}](https://github.com/{owner}/{repo})\n"
+                f"{Emoji.INVITE.value} **Pull Request:** [#{pr_number}]({pr_url}) — **{title}**\n"
+                f"{Emoji.PING.value} **Status:** `{state}`\n"
+                f"--- \n"
+                f"{Emoji.CROWN.value} **Opened By:** @{author}\n"
+                f"{Emoji.TIME.value} **Created At:** {discord_ts}\n"
+                f"{Emoji.LEAF.value} **Branch Path:** `{head_branch}` ➡️ `{base_branch}`\n\n"
+                f"{Emoji.UPSHIFT.value} **Pull Request Stats:**\n"
+                f"{Emoji.ADD.value} Line Additions: `+{additions}`\n"
+                f"{Emoji.DELETE.value} Line Deletions: `-{deletions}`\n"
+                f"{Emoji.SHINE.value} Changed Files: `{changed_files}`\n"
+                f"{Emoji.ENCRYPTION.value} Internal Commits: `{commits}`"
+            )
 
-                # Timestamp conversion parsing loop
-                created_raw = data["created_at"]
-                dt = datetime.strptime(created_raw, "%Y-%m-%dT%H:%M:%SZ")
-                discord_ts = f"<t:{int(dt.timestamp())}:F>"
-
-                # 3. Design output layout metrics block representation
-                description = (
-                    f"{Emoji.FILE.value} **Repository:** [{owner}/{repo}](https://github.com/{owner}/{repo})\n"
-                    f"{Emoji.INVITE.value} **Pull Request:** [#{pr_number}]({pr_url}) — **{title}**\n"
-                    f"{Emoji.PING.value} **Status:** `{state}`\n"
-                    f"--- \n"
-                    f"{Emoji.CROWN.value} **Opened By:** @{author}\n"
-                    f"{Emoji.TIME.value} **Created At:** {discord_ts}\n"
-                    f"{Emoji.LEAF.value} **Branch Path:** `{head_branch}` ➡️ `{base_branch}`\n\n"
-                    f"{Emoji.UPSHIFT.value} **Pull Request Stats:**\n"
-                    f"{Emoji.ADD.value} Line Additions: `+{additions}`\n"
-                    f"{Emoji.DELETE.value} Line Deletions: `-{deletions}`\n"
-                    f"{Emoji.SHINE.value} Changed Files: `{changed_files}`\n"
-                    f"{Emoji.ENCRYPTION.value} Internal Commits: `{commits}`"
-                )
-
-                embed = discord.Embed(title=f"{Emoji.GITHUB.value} GitHub Pull Request Details",
-                                      description=description, color=color)
-                embed.set_thumbnail(url=avatar)
+            embed = discord.Embed(
+                title=f"{Emoji.GITHUB.value} GitHub Pull Request Details",
+                description=description,
+                color=color,
+            )
+            embed.set_thumbnail(url=avatar)
 
         await ctx.send(embed=embed)
 

@@ -20,6 +20,7 @@ from discord import app_commands
 from discord.ext import commands
 from PIL import Image, ImageDraw, ImageOps
 
+from api.http import close_http_session, create_http_session
 from api.log import log_exception
 from api.paginator import EmbedPaginator, PaginatorHelper
 
@@ -534,7 +535,7 @@ class Tools(commands.Cog):
 
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
-        self.aiohttp = aiohttp.ClientSession()
+        self.aiohttp = create_http_session()
         self.html_preview_menu = app_commands.ContextMenu(
             name="Preview HTML",
             callback=self.preview_html_file,
@@ -543,8 +544,7 @@ class Tools(commands.Cog):
         self.bot.tree.add_command(self.html_preview_menu)
 
     def cog_unload(self) -> None:
-        if not self.aiohttp.closed:
-            self.bot.loop.create_task(self.aiohttp.close())
+        close_http_session(self.aiohttp, self.bot.loop)
         self.bot.tree.remove_command(
             self.html_preview_menu.name,
             type=self.html_preview_menu.type,

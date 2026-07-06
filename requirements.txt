@@ -5,6 +5,7 @@ colorama
 pytest
 pytest-asyncio
 dpytest
+ruff
 qrcode
 Pillow
 aiohttp
@@ -14,4 +15,3 @@ faker
 pycountry
 aiosqlite
 psutil
-figlet

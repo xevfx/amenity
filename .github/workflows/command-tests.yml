@@ -1,0 +1,44 @@
+name: Command Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  command-workflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y figlet
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Compile
+        run: python -m compileall -q .
+
+      - name: Command workflow tests
+        run: pytest -q tests/test_command_workflow.py
+
+      - name: Upload command metrics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: command-workflow-report
+          path: artifacts/command-workflow-report.json
+          if-no-files-found: ignore

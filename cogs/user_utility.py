@@ -3,7 +3,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-import aiohttp
 import discord
 import qrcode
 from discord import app_commands
@@ -13,6 +12,7 @@ from PIL import Image, ImageColor, ImageDraw, ImageFilter
 from simpleeval import simple_eval
 
 from api.emojis import Emoji
+from api.http import close_http_session, create_http_session
 from api.log import log_exception
 from core.amenity import Amenity
 
@@ -201,7 +201,7 @@ class UserUtility(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.aiohttp = aiohttp.ClientSession()
+        self.aiohttp = create_http_session()
         self.translator = Translator()
         self.translate_to_english_menu = app_commands.ContextMenu(
             name="translate-to-english",
@@ -211,8 +211,7 @@ class UserUtility(commands.Cog):
         self.bot.tree.add_command(self.translate_to_english_menu)
 
     def cog_unload(self) -> None:
-        if not self.aiohttp.closed:
-            self.bot.loop.create_task(self.aiohttp.close())
+        close_http_session(self.aiohttp, self.bot.loop)
         self.bot.tree.remove_command(
             self.translate_to_english_menu.name,
             type=self.translate_to_english_menu.type,
@@ -723,7 +722,7 @@ class UserUtility(commands.Cog):
         url = url.lower()
         try:
             api_url = f"https://tinyurl.com/api-create.php?url={url}"
-            async with await self.aiohttp.get(api_url) as resp:
+            async with self.aiohttp.get(api_url) as resp:
                 if resp.status != 200:
                     await ctx.reply(
                         "Failed to shorten the URL.",

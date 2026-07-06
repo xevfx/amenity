@@ -10,6 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from api.emojis import Emoji
+from api.http import JsonData, close_http_session, create_http_session, fetch_json
 from api.log import log_exception
 from core.amenity import Amenity
 from core.cache import cache
@@ -94,7 +95,7 @@ class Crypto(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.aiohttp = aiohttp.ClientSession()
+        self.aiohttp = create_http_session()
 
     async def cog_load(self) -> None:
         self.addy_db_path = os.path.abspath(
@@ -113,41 +114,30 @@ class Crypto(commands.Cog):
         await self.addy_conn.commit()
 
     def cog_unload(self) -> None:
-        if not self.aiohttp.closed:
-            self.bot.loop.create_task(self.aiohttp.close())
-        self.bot.loop.create_task(self.addy_conn.close())
+        close_http_session(self.aiohttp, self.bot.loop)
+        task = self.bot.loop.create_task(self.addy_conn.close())
+        task.add_done_callback(self._log_task_exception)
+
+    def _log_task_exception(self, task: asyncio.Task[None]) -> None:
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            log_exception(exc)
 
     def _is_fiat(self, code: str) -> bool:
         return code.lower().strip() in _FIAT_CODES
 
-    async def _fetch_json(self, url: str) -> dict | None:
-        try:
-            async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                if resp.status != 200:
-                    return None
-                return await resp.json()
-        except (TimeoutError, aiohttp.ClientError):
-            return None
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log_exception(exc)
-            return None
+    async def _fetch_json(self, url: str) -> JsonData | None:
+        data, _ = await fetch_json(self.aiohttp, url)
+        return data
 
     async def _fetch_json_status(self, url: str) -> tuple[dict | None, int | None]:
-        try:
-            async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                status = resp.status
-                if status != 200:
-                    return None, status
-                return await resp.json(), status
-        except (TimeoutError, aiohttp.ClientError):
-            return None, None
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log_exception(exc)
-            return None, None
+        data, status = await fetch_json(self.aiohttp, url)
+        if isinstance(data, dict):
+            return data, status
+        return None, status
 
     async def _get_coin_list(self) -> list[dict]:
         # Avoid caching an empty list result from CoinGecko. If the cached

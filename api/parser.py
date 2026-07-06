@@ -2,6 +2,35 @@ import re
 import time as tm
 from datetime import UTC, datetime, timedelta, timezone
 
+TIME_UNITS = {
+    "s": 1,
+    "sec": 1,
+    "second": 1,
+    "seconds": 1,
+    "m": 60,
+    "min": 60,
+    "minute": 60,
+    "minutes": 60,
+    "h": 3600,
+    "hr": 3600,
+    "hrs": 3600,
+    "hour": 3600,
+    "hours": 3600,
+    "d": 86400,
+    "day": 86400,
+    "days": 86400,
+    "w": 604800,
+    "week": 604800,
+    "weeks": 604800,
+}
+TIMEZONE_PATTERN = re.compile(r"^(?:utc|gmt)?([+-])(\d{1,2})(?::?(\d{2}))?$")
+CLOCK_PATTERN = re.compile(
+    r"^(\d{1,2})(?::(\d{2}))?\s*([ap]m)?(?:\s+((?:utc|gmt|z)?[+-]\d{1,2}(?::?\d{2})?|utc|gmt|z))?$",
+)
+TIMESTAMP_PATTERN = re.compile(r"^<t:(\d+)(?::[tTdDfFR])?>$")
+DURATION_PATTERN = re.compile(r"^(\d+(?:\.\d+)?\s*[a-zA-Z]+)+$")
+DURATION_SEGMENT_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*([a-zA-Z]+)")
+
 
 def _timezone_from_string(timezone_str: str | None) -> timezone | None:
     if timezone_str is None:
@@ -11,7 +40,7 @@ def _timezone_from_string(timezone_str: str | None) -> timezone | None:
     if cleaned in {"utc", "gmt", "z"}:
         return UTC
 
-    offset_match = re.match(r"^(?:utc|gmt)?([+-])(\d{1,2})(?::?(\d{2}))?$", cleaned)
+    offset_match = TIMEZONE_PATTERN.match(cleaned)
     if not offset_match:
         raise ValueError("Invalid timezone format. Use UTC or UTC+5:45.")
 
@@ -30,10 +59,7 @@ def _timezone_from_string(timezone_str: str | None) -> timezone | None:
 
 
 def _clock_time_to_seconds(time_str: str) -> int:
-    clock_match = re.match(
-        r"^(\d{1,2})(?::(\d{2}))?\s*([ap]m)?(?:\s+((?:utc|gmt|z)?[+-]\d{1,2}(?::?\d{2})?|utc|gmt|z))?$",
-        time_str.lower(),
-    )
+    clock_match = CLOCK_PATTERN.match(time_str.lower())
     if not clock_match:
         raise ValueError("Invalid clock time format.")
 
@@ -78,54 +104,29 @@ def StringToTime(time_str: str) -> int:
     Raises:
         ValueError: If format is invalid or unit is unknown
     """
-    time_units = {
-        "s": 1,
-        "sec": 1,
-        "second": 1,
-        "seconds": 1,
-        "m": 60,
-        "min": 60,
-        "minute": 60,
-        "minutes": 60,
-        "h": 3600,
-        "hr": 3600,
-        "hrs": 3600,
-        "hour": 3600,
-        "hours": 3600,
-        "d": 86400,
-        "day": 86400,
-        "days": 86400,
-        "w": 604800,
-        "week": 604800,
-        "weeks": 604800,
-    }
-
     cleaned = time_str.strip()
 
-    timestamp_match = re.match(r"^<t:(\d+)(?::[tTdDfFR])?>$", cleaned)
+    timestamp_match = TIMESTAMP_PATTERN.match(cleaned)
     if timestamp_match:
         timestamp = int(timestamp_match.group(1))
         return timestamp - int(tm.time())
 
     normalized = cleaned.lower()
-    clock_pattern = r"^\d{1,2}(?::\d{2})?\s*(?:[ap]m)?(?:\s+(?:(?:utc|gmt|z)?[+-]\d{1,2}(?::?\d{2})?|utc|gmt|z))?$"
-    if re.match(clock_pattern, normalized):
+    if CLOCK_PATTERN.match(normalized):
         return _clock_time_to_seconds(normalized)
 
-    valid_pattern = r"^(\d+(?:\.\d+)?\s*[a-zA-Z]+)+$"
-    if not re.match(valid_pattern, normalized):
+    if not DURATION_PATTERN.match(normalized):
         raise ValueError("Invalid time format. Use format like '1h', '30m', '1d', or '2:25am UTC'")
 
-    segment_pattern = r"(\d+(?:\.\d+)?)\s*([a-zA-Z]+)"
-    segments = re.findall(segment_pattern, normalized)
+    segments = DURATION_SEGMENT_PATTERN.findall(normalized)
     if not segments:
         raise ValueError("Invalid time format. Use format like '1h', '30m', '1d'")
 
     total_seconds = 0
     for number_str, unit in segments:
-        if unit not in time_units:
+        if unit not in TIME_UNITS:
             raise ValueError(f"Unknown time unit: {unit}. Use s, m, h, d, or w")
-        total_seconds += float(number_str) * time_units[unit]
+        total_seconds += float(number_str) * TIME_UNITS[unit]
 
     return int(total_seconds)
 

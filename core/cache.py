@@ -12,12 +12,24 @@ class TimeCache[T]:
         self.default_ttl = float(default_ttl)
         self._store: dict[str, tuple[T, float]] = {}
 
+    def __len__(self) -> int:
+        self.prune()
+        return len(self._store)
+
     def _expires_at(self, ttl: float | None) -> float:
         if ttl is None:
             ttl = self.default_ttl
         return time.monotonic() + float(ttl)
 
+    def prune(self) -> int:
+        now = time.monotonic()
+        expired_keys = [key for key, (_, expires_at) in self._store.items() if expires_at <= now]
+        for key in expired_keys:
+            self._store.pop(key, None)
+        return len(expired_keys)
+
     def set(self, key: str, value: T, ttl: float | None = None) -> None:
+        self.prune()
         self._store[key] = (value, self._expires_at(ttl))
 
     def get(self, key: str, default: T | object = None) -> T | object:

@@ -231,7 +231,7 @@ class Owner(commands.Cog):
         Show bot resource usage.
         """
         total, used = self._read_meminfo()
-        cache_entries = len(cache._store)
+        cache_entries = len(cache)
         guild_count = len(self.bot.guilds)
         user_installs = await self._get_user_install_count()
 

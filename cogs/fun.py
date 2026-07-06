@@ -1,10 +1,8 @@
-import asyncio
 import io
 import random
 from pathlib import Path
 from urllib.parse import quote
 
-import aiohttp
 import discord
 import pycountry
 from discord import app_commands
@@ -14,6 +12,7 @@ from faker.config import AVAILABLE_LOCALES
 from PIL import Image, ImageDraw, ImageFont
 
 from api.emojis import Emoji
+from api.http import JsonData, close_http_session, create_http_session, fetch_json
 from api.log import log_exception
 from core.amenity import Amenity
 
@@ -28,7 +27,7 @@ class Fun(commands.Cog):
 
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
-        self.aiohttp = aiohttp.ClientSession()
+        self.aiohttp = create_http_session()
         self.supported_countries = {}
         for locale in AVAILABLE_LOCALES:
             parts = locale.split("_")
@@ -37,23 +36,15 @@ class Fun(commands.Cog):
                 self.supported_countries[country_code] = locale
 
     def cog_unload(self) -> None:
-        if not self.aiohttp.closed:
-            self.bot.loop.create_task(self.aiohttp.close())
+        close_http_session(self.aiohttp, self.bot.loop)
 
-    async def _fetch_json(self, url: str) -> tuple[dict | list | None, int | None]:
-        try:
-            async with self.aiohttp.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                status = resp.status
-                if status != 200:
-                    return None, status
-                return await resp.json(), status
-        except (TimeoutError, aiohttp.ClientError):
-            return None, None
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            log_exception(exc)
-            return None, None
+    async def _fetch_json(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[JsonData | None, int | None]:
+        return await fetch_json(self.aiohttp, url, headers=headers)
 
     def _format_definitions(
         self,
@@ -300,19 +291,15 @@ class Fun(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def dad_joke_cmd(self, ctx: commands.Context) -> None:
-
-        async with aiohttp.ClientSession() as session:
-            headers = {"Accept": "application/json"}
-            async with session.get("https://icanhazdadjoke.com/", headers=headers) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    embed = discord.Embed(title="👨 Dad Joke", description=data["joke"], color=discord.Color.orange())
-                else:
-                    embed = discord.Embed(
-                        title="❌ API Error",
-                        description="Failed to retrieve a dad joke.",
-                        color=discord.Color.red(),
-                    )
+        data, status = await self._fetch_json("https://icanhazdadjoke.com/", headers={"Accept": "application/json"})
+        if status == 200 and isinstance(data, dict):
+            embed = discord.Embed(title="👨 Dad Joke", description=data["joke"], color=discord.Color.orange())
+        else:
+            embed = discord.Embed(
+                title="❌ API Error",
+                description="Failed to retrieve a dad joke.",
+                color=discord.Color.red(),
+            )
 
         await ctx.send(embed=embed)
 
@@ -327,10 +314,9 @@ class Fun(commands.Cog):
         """
         try:
             url = "https://v2.jokeapi.dev/joke/Dark?type=single,twopart"
-            async with self.aiohttp.get(url) as resp:
-                if resp.status != 200:
-                    return await ctx.send("Could not fetch a joke at this time.")
-                data = await resp.json()
+            data, status = await self._fetch_json(url)
+            if status != 200 or not isinstance(data, dict):
+                return await ctx.send("Could not fetch a joke at this time.")
 
             if data.get("type") == "single":
                 joke_text = data.get("joke", "No joke found.")
@@ -352,25 +338,20 @@ class Fun(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def useless_fact_cmd(self, ctx: commands.Context) -> None:
-
-        async with (
-            aiohttp.ClientSession() as session,
-            session.get("https://uselessfacts.jsph.pl/api/v2/facts/random?language=en") as resp,
-        ):
-            if resp.status == 200:
-                data = await resp.json()
-                embed = discord.Embed(
-                    title="🧠 Useless Fact",
-                    description=data["text"],
-                    color=discord.Color.teal(),
-                )
-                embed.set_footer(text=f"Source: {data['source']}")
-            else:
-                embed = discord.Embed(
-                    title=f"{Emoji.WARNING.value} API Error",
-                    description="Failed to retrieve a useless fact.",
-                    color=discord.Color.red(),
-                )
+        data, status = await self._fetch_json("https://uselessfacts.jsph.pl/api/v2/facts/random?language=en")
+        if status == 200 and isinstance(data, dict):
+            embed = discord.Embed(
+                title="🧠 Useless Fact",
+                description=data["text"],
+                color=discord.Color.teal(),
+            )
+            embed.set_footer(text=f"Source: {data['source']}")
+        else:
+            embed = discord.Embed(
+                title=f"{Emoji.WARNING.value} API Error",
+                description="Failed to retrieve a useless fact.",
+                color=discord.Color.red(),
+            )
 
         await ctx.send(embed=embed)
 

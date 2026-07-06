@@ -12,6 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from api.http import close_http_session, create_http_session
 from api.log import log_exception
 from api.paginator import EmbedPaginator
 from core.checks import PremiumRequired, has_premium, premium_required
@@ -82,7 +83,7 @@ class AI(commands.Cog):
 
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
-        self.aiohttp = aiohttp.ClientSession(timeout=REQUEST_TIMEOUT)
+        self.aiohttp = create_http_session(timeout=REQUEST_TIMEOUT)
         self.system_prompt = self._load_system_prompt()
         self.summarize_menu = app_commands.ContextMenu(
             name="Sumarize it by GPT-OSS-120b",
@@ -103,8 +104,7 @@ class AI(commands.Cog):
         self.bot.tree.add_command(self.professional_menu)
 
     def cog_unload(self) -> None:
-        if not self.aiohttp.closed:
-            self.bot.loop.create_task(self.aiohttp.close())
+        close_http_session(self.aiohttp, self.bot.loop)
         for menu in (
             self.summarize_menu,
             self.professional_menu,

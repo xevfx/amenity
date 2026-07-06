@@ -3,7 +3,9 @@ amenity/
 __pycache__/
 .ruff_cache/
 .pytest_cache/
+.venv/
 test/
 data/*
 webPage/
 cogs/giveaway.py
+artifacts/
