@@ -136,6 +136,8 @@ class ServerUtility(commands.Cog):
             await ctx.send_help(ctx.command)
 
     @server_group.command(name="info", description="Get information about the server.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def server_info(self, ctx: commands.Context) -> None:
         if ctx.guild is None:

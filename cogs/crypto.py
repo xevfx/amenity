@@ -91,7 +91,7 @@ def _blockcypher_url(network: str, address: str) -> str:
 
 class Crypto(commands.Cog):
     display_name = "Crypto"
-    group_name = "Utilities"
+    group_name = "Crypto"
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -312,6 +312,8 @@ class Crypto(commands.Cog):
             await ctx.send_help(ctx.command)
 
     @balance.command(name="ltc", description="Get the balance of a ltc address.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(address="The Litecoin address to check")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def ltc_balance(self, ctx: commands.Context, address: str) -> None:
@@ -378,6 +380,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @balance.command(name="eth", description="Get the balance of an eth address.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(address="The Ethereum address to check")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def eth_balance(self, ctx: commands.Context, address: str) -> None:
@@ -444,6 +448,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @balance.command(name="sol", description="Get the balance of a sol address.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(address="The Solana address to check")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def sol_balance(self, ctx: commands.Context, address: str) -> None:
@@ -496,6 +502,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @balance.command(name="usdt-bep20", description="Get the USDT (BEP-20) balance of a BSC address.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(address="The BSC address to check")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def usdt_bep20_balance(self, ctx: commands.Context, address: str) -> None:
@@ -548,6 +556,8 @@ class Crypto(commands.Cog):
             await ctx.send_help(ctx.command)
 
     @txid.command(name="ltc", description="Get information about a Litecoin transaction.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(tx_hash="The Litecoin transaction hash (TXID)")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def ltc_txid(self, ctx: commands.Context, tx_hash: str) -> None:
@@ -655,6 +665,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @txid.command(name="btc", description="Get information about a Bitcoin transaction.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(tx_hash="The Bitcoin transaction hash (TXID)")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def btc_txid(self, ctx: commands.Context, tx_hash: str) -> None:
@@ -758,6 +770,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @txid.command(name="sol", description="Get information about a Solana transaction.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(tx_hash="The Solana transaction hash (signature)")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def sol_txid(self, ctx: commands.Context, tx_hash: str) -> None:
@@ -856,6 +870,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @txid.command(name="eth", description="Get information about an Ethereum transaction.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(tx_hash="The Ethereum transaction hash (TXID)")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def eth_txid(self, ctx: commands.Context, tx_hash: str) -> None:
@@ -957,6 +973,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @txid.command(name="usdt-bep20", description="Get information about a USDT BEP-20 transaction on BSC.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(tx_hash="The BSC transaction hash")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def usdt_bep20_txid(self, ctx: commands.Context, tx_hash: str) -> None:
@@ -1317,6 +1335,8 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @addy.command(name="set", description="Save one of your crypto addresses")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(network="The network to save", addy="Your crypto address")
     @app_commands.choices(network=CRYPTO_NETWORK_CHOICES)
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -1358,6 +1378,8 @@ class Crypto(commands.Cog):
         )
 
     @addy.command(name="get", description="Get one of your saved crypto addresses")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(network="The network to show")
     @app_commands.choices(network=CRYPTO_NETWORK_CHOICES)
     @commands.cooldown(1, 5, commands.BucketType.user)

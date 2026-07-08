@@ -17,6 +17,42 @@ if TYPE_CHECKING:
 
 HELP_CACHE_KEY = "help:commands"
 HELP_CACHE_TTL = 300
+GROUP_ORDER = {
+    "Fun": 0,
+    "Games": 1,
+    "AI": 2,
+    "Crypto": 3,
+    "GitHub": 4,
+    "Tools": 5,
+    "Reminders": 6,
+    "Templates": 7,
+    "Utilities": 8,
+    "other": 99,
+}
+GROUP_EMOJIS = {
+    "AI": Emoji.SHINE.value,
+    "Crypto": Emoji.CRYPTO.value,
+    "Fun": Emoji.FIRE.value,
+    "Games": Emoji.GIVEAWAY.value,
+    "GitHub": Emoji.GITHUB.value,
+    "Reminders": Emoji.TIME.value,
+    "Templates": Emoji.FILE.value,
+    "Tools": Emoji.UTILITIES.value,
+    "Utilities": Emoji.UTILITIES.value,
+    "other": Emoji.COMMAND.value,
+}
+COG_EMOJIS = {
+    "AI": Emoji.SHINE.value,
+    "Crypto": Emoji.CRYPTO.value,
+    "Fun": Emoji.TADA.value,
+    "Games": Emoji.GIVEAWAY.value,
+    "Github": Emoji.GITHUB.value,
+    "Reminder": Emoji.TIME.value,
+    "ServerUtility": Emoji.HOUSE.value,
+    "Template": Emoji.FILE.value,
+    "Tools": Emoji.UTILITIES.value,
+    "UserUtility": Emoji.AT.value,
+}
 
 
 @dataclass(frozen=True)
@@ -50,6 +86,43 @@ def _cog_group_name(cog: commands.Cog | None) -> str:
     if cog.__module__ and cog.__module__.startswith("cogs."):
         return cog.__module__.split(".", 1)[1].replace("_", " ")
     return cog.qualified_name or "other"
+
+
+def _group_label(group_name: str) -> str:
+    if group_name == "other":
+        return "Other"
+    return group_name.replace("_", " ").title()
+
+
+def _group_emoji(group_name: str) -> str:
+    return GROUP_EMOJIS.get(group_name, Emoji.COMMAND.value)
+
+
+def _group_sort_key(group_name: str) -> tuple[int, str]:
+    return GROUP_ORDER.get(group_name, 50), _group_label(group_name).lower()
+
+
+def _cog_emoji(cog: commands.Cog | None) -> str:
+    if cog is None:
+        return Emoji.COMMAND.value
+    return COG_EMOJIS.get(cog.qualified_name, Emoji.COMMAND.value)
+
+
+def _lookup_key(value: str) -> str:
+    return " ".join(value.lower().replace("_", " ").replace("-", " ").split())
+
+
+def _singular_lookup_key(value: str) -> str:
+    normalized = _lookup_key(value)
+    if normalized.endswith("ies"):
+        return f"{normalized[:-3]}y"
+    if normalized.endswith("s"):
+        return normalized[:-1]
+    return normalized
+
+
+def _matches_lookup(value: str, query: str) -> bool:
+    return _lookup_key(value) == _lookup_key(query) or _singular_lookup_key(value) == _singular_lookup_key(query)
 
 
 def _is_group(command: commands.Command) -> bool:
@@ -89,6 +162,40 @@ def _format_params(command: commands.Command) -> list[str]:
     return params
 
 
+def _top_level_commands(commands_list: Sequence[commands.Command]) -> list[commands.Command]:
+    return sorted([cmd for cmd in commands_list if cmd.parent is None], key=lambda command: command.qualified_name)
+
+
+def _format_command_names(command: commands.Command) -> list[str]:
+    children = sorted(getattr(command, "commands", []) or [], key=lambda child: child.qualified_name)
+    if not children:
+        return [f"`/{command.qualified_name}`"]
+    return [f"`/{child.qualified_name}`" for child in children]
+
+
+def _format_command_mentions(commands_list: Sequence[commands.Command], *, limit: int | None = 6) -> str:
+    names = [
+        command_name
+        for command in _top_level_commands(commands_list)
+        for command_name in _format_command_names(command)
+    ]
+    if not names:
+        return "No command groups."
+    shown = names if limit is None else names[:limit]
+    if limit is not None and len(names) > limit:
+        shown.append(f"+{len(names) - limit} more")
+    return ", ".join(shown)
+
+
+def _find_group_name(cogs: Iterable[commands.Cog], query: str) -> str | None:
+    for group_name in {_cog_group_name(cog) for cog in cogs}:
+        if _matches_lookup(group_name, query) or _matches_lookup(_group_label(group_name), query):
+            return group_name
+    if _matches_lookup("other", query) or _matches_lookup("uncategorized", query):
+        return "other"
+    return None
+
+
 async def _build_command_embed(
     *,
     command: commands.Command,
@@ -123,15 +230,13 @@ async def _build_command_embed(
         )
 
     if command.cog:
+        group_name = _cog_group_name(command.cog)
+        group_path = f"{_group_emoji(group_name)} {_group_label(group_name)}"
+        category_path = f"{_cog_emoji(command.cog)} {_cog_display_name(command.cog)}"
         embed.add_field(
             name="Group",
-            value=_cog_group_name(command.cog),
-            inline=True,
-        )
-        embed.add_field(
-            name="Category",
-            value=_cog_display_name(command.cog),
-            inline=True,
+            value=f"{group_path} > {category_path}",
+            inline=False,
         )
 
     if _is_group(command):
@@ -254,32 +359,79 @@ class HelpView(discord.ui.View):
         self.uncategorized = uncategorized
         self.message = message
         self.current_cog: commands.Cog | None = None
+        self.current_group: str | None = None
         self.current_page = 0
         self.total_pages = 0
         self.mode = "home"
         self._update_components()
 
-    def _update_components(self) -> None:
-        self.clear_items()
-        options = []
+    def _grouped_cogs(self) -> dict[str, list[commands.Cog]]:
+        grouped: dict[str, list[commands.Cog]] = {}
         for cog in self.mapping:
+            grouped.setdefault(_cog_group_name(cog), []).append(cog)
+        if self.uncategorized:
+            grouped.setdefault("other", [])
+        return {
+            group_name: sorted(cogs, key=lambda cog: _cog_display_name(cog).lower())
+            for group_name, cogs in grouped.items()
+        }
+
+    def _group_command_count(self, group_name: str) -> int:
+        if group_name == "other":
+            return len(self.uncategorized)
+        return sum(len(self.mapping[cog]) for cog in self._grouped_cogs().get(group_name, []))
+
+    def _group_options(self) -> list[discord.SelectOption]:
+        options = []
+        for group_name, _cogs in sorted(self._grouped_cogs().items(), key=lambda item: _group_sort_key(item[0])):
+            options.append(
+                discord.SelectOption(
+                    label=_group_label(group_name),
+                    value=f"group:{group_name}",
+                    description=f"{self._group_command_count(group_name)} commands",
+                    emoji=_group_emoji(group_name),
+                )
+            )
+        return options
+
+    def _cog_options(self, group_name: str) -> list[discord.SelectOption]:
+        if group_name == "other":
+            return [
+                discord.SelectOption(
+                    label="Uncategorized",
+                    value="uncategorized",
+                    description=f"{len(self.uncategorized)} commands",
+                    emoji=Emoji.COMMAND.value,
+                )
+            ]
+
+        options = []
+        for cog in self._grouped_cogs().get(group_name, []):
+            preview = _format_command_mentions(self.mapping[cog], limit=3)
             options.append(
                 discord.SelectOption(
                     label=_cog_display_name(cog),
-                    value=cog.qualified_name,
-                    description=f"{len(self.mapping[cog])} commands",
+                    value=f"cog:{cog.qualified_name}",
+                    description=preview.replace("`", "")[:100],
+                    emoji=_cog_emoji(cog),
                 )
             )
-        if self.uncategorized:
-            options.append(
-                discord.SelectOption(
-                    label="Uncategorized",
-                    value="__uncategorized__",
-                    description=f"{len(self.uncategorized)} commands",
-                )
-            )
+        return options
+
+    def _select_options(self) -> tuple[list[discord.SelectOption], str]:
+        if (
+            self.mode in {"group", "cog"}
+            and self.current_group
+            and len(self._grouped_cogs().get(self.current_group, [])) > 1
+        ):
+            return self._cog_options(self.current_group), f"Select a {_group_label(self.current_group)} category..."
+        return self._group_options(), "Select a command group..."
+
+    def _update_components(self) -> None:
+        self.clear_items()
+        options, placeholder = self._select_options()
         if options:
-            self.add_item(HelpCategorySelect(self, options[:25]))
+            self.add_item(HelpCategorySelect(self, options[:25], placeholder=placeholder))
 
         if self.mode != "home":
             self.add_item(HelpHomeButton(self))
@@ -291,46 +443,68 @@ class HelpView(discord.ui.View):
         self.add_item(HelpCloseButton(self))
 
     async def create_home_embed(self) -> discord.Embed:
+        group_lines = []
+        for group_name, _cogs in sorted(self._grouped_cogs().items(), key=lambda item: _group_sort_key(item[0])):
+            command_count = self._group_command_count(group_name)
+            group_lines.append(f"{_group_emoji(group_name)} **{_group_label(group_name)}** - {command_count} commands")
+
         embed = discord.Embed(
             title=f"{Emoji.CROWN.value} Amenity Commands",
-            description="Select a category from the dropdown to view commands.",
+            description="\n".join(
+                [
+                    "Select a command group from the dropdown.\n",
+                    *group_lines,
+                    f"\nUse `{self.prefix}help <command>` for details.",
+                ]
+            ),
+            color=0x2F3136,
+        )
+        return embed
+
+    async def create_group_embed(self, group_name: str) -> discord.Embed:
+        label = _group_label(group_name)
+        command_count = self._group_command_count(group_name)
+        embed = discord.Embed(
+            title=f"{_group_emoji(group_name)} {label} - {command_count} commands",
+            description="Categories in this group.",
             color=0x2F3136,
         )
 
-        grouped: dict[str, list[str]] = {}
-        for cog, commands_list in self.mapping.items():
-            group = _cog_group_name(cog)
-            grouped.setdefault(group, []).append(f"{_cog_display_name(cog)} ({len(commands_list)})")
-        if self.uncategorized:
-            grouped.setdefault("other", []).append(f"Uncategorized ({len(self.uncategorized)})")
+        if group_name == "other":
+            if self.uncategorized:
+                embed.add_field(
+                    name=f"{Emoji.COMMAND.value} Uncategorized - {len(self.uncategorized)} commands",
+                    value=_format_command_mentions(self.uncategorized, limit=None),
+                    inline=False,
+                )
+            return embed
 
-        for group_name in sorted(grouped.keys()):
-            label = group_name.replace("_", " ").title()
+        for cog in self._grouped_cogs().get(group_name, []):
+            commands_list = self.mapping[cog]
             embed.add_field(
-                name=label,
-                value="\n".join(sorted(grouped[group_name])),
+                name=f"{_cog_emoji(cog)} {_cog_display_name(cog)} - {len(commands_list)} commands",
+                value=_format_command_mentions(commands_list),
                 inline=False,
             )
-
-        embed.add_field(
-            name="Usage",
-            value=f"Use `{self.prefix}help <command>` for details.",
-            inline=False,
-        )
         return embed
 
     async def create_cog_embed(self, cog: commands.Cog | None) -> discord.Embed:
         if cog is None:
             commands_list = self.uncategorized
             title = "Uncategorized"
+            icon = Emoji.COMMAND.value
             description = "Commands without a category."
         else:
             commands_list = self.mapping.get(cog, [])
-            title = _cog_display_name(cog)
+            group_name = _cog_group_name(cog)
+            group_label = _group_label(group_name)
+            cog_label = _cog_display_name(cog)
+            title = cog_label if group_label == cog_label else f"{group_label} > {cog_label}"
+            icon = _cog_emoji(cog)
             description = _normalize_description(getattr(cog, "description", None))
 
         embed = discord.Embed(
-            title=f"{Emoji.COMMAND.value} {title} Commands",
+            title=f"{icon} {title} Commands",
             description=description,
             color=0x2F3136,
         )
@@ -343,17 +517,18 @@ class HelpView(discord.ui.View):
             )
             return embed
 
-        commands_list = sorted(commands_list, key=lambda c: c.qualified_name)
-        per_page = 18
-        self.total_pages = (len(commands_list) + per_page - 1) // per_page
+        top_commands = _top_level_commands(commands_list) or sorted(commands_list, key=lambda c: c.qualified_name)
+        per_page = 10
+        self.total_pages = max(1, (len(top_commands) + per_page - 1) // per_page)
         start = self.current_page * per_page
         end = start + per_page
-        page_commands = commands_list[start:end]
-        lines = []
-        for cmd in page_commands:
-            suffix = " (group)" if _is_group(cmd) else ""
-            lines.append(f"`{cmd.qualified_name}`{suffix}")
-        embed.add_field(name="Commands", value=", ".join(lines), inline=False)
+        page_commands = top_commands[start:end]
+        command_names = ", ".join(
+            command_name
+            for command in page_commands
+            for command_name in _format_command_names(command)
+        )
+        embed.add_field(name="Commands", value=command_names, inline=False)
         embed.set_footer(text=f"Page {self.current_page + 1}/{self.total_pages}")
         return embed
 
@@ -367,6 +542,7 @@ class HelpView(discord.ui.View):
 
     async def show_home(self, interaction: discord.Interaction) -> None:
         self.current_cog = None
+        self.current_group = None
         self.current_page = 0
         self.total_pages = 0
         self.mode = "home"
@@ -374,8 +550,24 @@ class HelpView(discord.ui.View):
         self._update_components()
         await interaction.response.edit_message(embed=embed, view=self)
 
+    async def show_group(self, interaction: discord.Interaction, group_name: str) -> None:
+        cogs = self._grouped_cogs().get(group_name, [])
+        if len(cogs) == 1:
+            await self.show_cog(interaction, cogs[0])
+            return
+
+        self.current_cog = None
+        self.current_group = group_name
+        self.current_page = 0
+        self.total_pages = 0
+        self.mode = "group"
+        embed = await self.create_group_embed(group_name)
+        self._update_components()
+        await interaction.response.edit_message(embed=embed, view=self)
+
     async def show_cog(self, interaction: discord.Interaction, cog: commands.Cog | None) -> None:
         self.current_cog = cog
+        self.current_group = _cog_group_name(cog)
         self.current_page = 0
         self.mode = "cog"
         embed = await self.create_cog_embed(cog)
@@ -422,10 +614,12 @@ class HelpCategorySelect(discord.ui.Select):
         self,
         help_view: HelpView,
         options: Iterable[discord.SelectOption],
+        *,
+        placeholder: str,
     ) -> None:
         self.help_view = help_view
         super().__init__(
-            placeholder="Select a category...",
+            placeholder=placeholder,
             options=list(options),
             min_values=1,
             max_values=1,
@@ -434,10 +628,14 @@ class HelpCategorySelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         value = self.values[0]
-        if value == "__uncategorized__":
+        if value.startswith("group:"):
+            await self.help_view.show_group(interaction, value.removeprefix("group:"))
+            return
+        if value == "uncategorized":
             await self.help_view.show_cog(interaction, None)
             return
-        cog = self.help_view.bot.get_cog(value)
+        cog_name = value.removeprefix("cog:")
+        cog = self.help_view.bot.get_cog(cog_name)
         if cog:
             await self.help_view.show_cog(interaction, cog)
 
@@ -627,6 +825,11 @@ class AmenityHelpCommand(commands.HelpCommand):
             await self.send_command_help(found)
             return
 
+        group_name = _find_group_name(ctx.bot.cogs.values(), query)
+        if group_name:
+            await self.send_group_category_help(group_name)
+            return
+
         cog = ctx.bot.get_cog(query)
         if not cog:
             lowered = query.lower()
@@ -644,6 +847,38 @@ class AmenityHelpCommand(commands.HelpCommand):
     async def send_group_help(self, group: commands.Group) -> None:
         await self.send_command_help(group)
 
+    async def send_group_category_help(self, group_name: str) -> None:
+        index = self._ensure_index()
+        user = self.context.author
+        filtered = await index.visible_cogs(user)
+        uncategorized = await index.visible_uncategorized(user)
+        view = HelpView(
+            bot=self.context.bot,
+            index=index,
+            author=user,
+            prefix=self.context.prefix,
+            mapping=filtered,
+            uncategorized=uncategorized,
+        )
+        cogs = view._grouped_cogs().get(group_name, [])
+        if len(cogs) == 1:
+            cog = cogs[0]
+            view.current_cog = cog
+            view.current_group = _cog_group_name(cog)
+            view.mode = "cog"
+            embed = await view.create_cog_embed(cog)
+            view._update_components()
+            message = await self.get_destination().send(embed=embed, view=view)
+            view.message = message
+            return
+
+        view.current_group = group_name
+        view.mode = "group"
+        embed = await view.create_group_embed(group_name)
+        view._update_components()
+        message = await self.get_destination().send(embed=embed, view=view)
+        view.message = message
+
     async def send_cog_help(self, cog: commands.Cog) -> None:
         index = self._ensure_index()
         if not await index.can_see_cog(cog, self.context.author):
@@ -658,7 +893,11 @@ class AmenityHelpCommand(commands.HelpCommand):
             mapping={cog: commands_list},
             uncategorized=[],
         )
+        view.current_cog = cog
+        view.current_group = _cog_group_name(cog)
+        view.mode = "cog"
         embed = await view.create_cog_embed(cog)
+        view._update_components()
         await self.get_destination().send(embed=embed, view=view)
 
     async def send_command_help(self, command: commands.Command) -> None:
@@ -748,13 +987,39 @@ class HelpCog(commands.Cog):
                 return
 
             lowered = query.lower()
+            group_name = _find_group_name(mapping.keys(), query)
+            if group_name:
+                cogs = view._grouped_cogs().get(group_name, [])
+                if len(cogs) == 1:
+                    cog = cogs[0]
+                    view.current_cog = cog
+                    view.current_group = _cog_group_name(cog)
+                    view.mode = "cog"
+                    embed = await view.create_cog_embed(cog)
+                    view._update_components()
+                    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                    view.message = await interaction.original_response()
+                    return
+
+                view.current_group = group_name
+                view.mode = "group"
+                embed = await view.create_group_embed(group_name)
+                view._update_components()
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                view.message = await interaction.original_response()
+                return
+
             cog = None
             for candidate in mapping:
                 if candidate.qualified_name.lower() == lowered or _cog_display_name(candidate).lower() == lowered:
                     cog = candidate
                     break
             if cog:
+                view.current_cog = cog
+                view.current_group = _cog_group_name(cog)
+                view.mode = "cog"
                 embed = await view.create_cog_embed(cog)
+                view._update_components()
                 await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
                 view.message = await interaction.original_response()
                 return

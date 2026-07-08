@@ -531,7 +531,7 @@ def invert_image(
 
 class Tools(commands.Cog):
     display_name = "Tools"
-    group_name = "Utilities"
+    group_name = "Tools"
 
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
@@ -540,6 +540,8 @@ class Tools(commands.Cog):
             name="Preview HTML",
             callback=self.preview_html_file,
             type=discord.AppCommandType.message,
+            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
+            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.bot.tree.add_command(self.html_preview_menu)
 
@@ -696,6 +698,8 @@ class Tools(commands.Cog):
         await self._say(ctx, message)
 
     @say_group.command(name="in-embed", description="Echo a message inside an embed.")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(message="The message to echo inside an embed.")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def say_in_embed(self, ctx: commands.Context, *, message: str) -> None:
@@ -723,6 +727,8 @@ class Tools(commands.Cog):
         name="add-stroke",
         description="Add a white outline on the profile picture of selected users.",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         user="The user whose profile picture to add the stroke to.",
     )
@@ -810,6 +816,8 @@ class Tools(commands.Cog):
         name="rotate-right",
         description="Rotate the profile picture 90 degrees clockwise.",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         user="The user whose profile picture to rotate.",
     )
@@ -830,6 +838,8 @@ class Tools(commands.Cog):
         name="rotate-left",
         description="Rotate the profile picture 90 degrees counter-clockwise.",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         user="The user whose profile picture to rotate.",
     )
@@ -850,6 +860,8 @@ class Tools(commands.Cog):
         name="rotate-up",
         description="Rotate the profile picture upside down.",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         user="The user whose profile picture to rotate.",
     )
@@ -870,6 +882,8 @@ class Tools(commands.Cog):
         name="rotate-down",
         description="Rotate the profile picture upside down.",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         user="The user whose profile picture to rotate.",
     )
@@ -891,6 +905,8 @@ class Tools(commands.Cog):
         name="invert",
         description="Invert the colours of an image.",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         image="The image to invert.",
     )

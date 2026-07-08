@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 class Github(commands.Cog):
     display_name = "GitHub"
-    group_name = "Utilities"
+    group_name = "GitHub"
 
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
@@ -64,6 +64,8 @@ class Github(commands.Cog):
         description="Gets the profile of a GitHub user.",
         aliases=["profile", "pf"],
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def github_user(self, ctx: commands.Context, user: str) -> None:
         query = user.strip()
         if not query:
@@ -99,6 +101,8 @@ class Github(commands.Cog):
         description="Search GitHub repositories.",
         aliases=["repository", "searchrepo", "reposearch", "search"],
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reposearch(self, ctx: commands.Context, *, query: str) -> None:
         try:
             api_url = (
@@ -207,6 +211,8 @@ class Github(commands.Cog):
         name="pull-request",
         description="Fetch detailed metrics about a GitHub Pull Request using its URL link.",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(pr_url="The full URL of the GitHub Pull Request to fetch details for.")
     async def pr_info_cmd(self, ctx: commands.Context, pr_url: str) -> None:
 

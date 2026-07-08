@@ -29,10 +29,38 @@ from core.installed_users import (
 from core.installed_users import init_installed_users_db, track_installed_user
 
 logger = logging.getLogger(__name__)
+PUBLIC_PREFIX_COGS = {"ServerUtility"}
+PUBLIC_PREFIX_COMMAND_ROOTS = {"help", "jishaku", "jsk"}
 
 os.environ["JISHAKU_HIDE"] = "True"
 os.environ["JISHAKU_NO_UNDERSCORE"] = "True"
 os.environ["JISHAKU_FORCE_PAGINATOR"] = "True"
+
+
+class PrefixCommandDisabled(commands.CheckFailure):
+    """Raised when a public slash-only command is invoked as a prefix command."""
+
+
+async def public_prefix_command_predicate(context: commands.Context) -> bool:
+    if context.interaction is not None:
+        return True
+
+    command = context.command
+    if command is None:
+        return True
+
+    command_root = command.qualified_name.split(maxsplit=1)[0]
+    if command_root in PUBLIC_PREFIX_COMMAND_ROOTS:
+        return True
+
+    cog = command.cog
+    if bool(getattr(cog, "owner_only", False) or getattr(cog, "hidden", False)):
+        return True
+
+    if type(cog).__name__ in PUBLIC_PREFIX_COGS:
+        return True
+
+    raise PrefixCommandDisabled
 
 
 class Amenity(commands.Bot):
@@ -44,7 +72,7 @@ class Amenity(commands.Bot):
         intents.messages = True
         intents.dm_messages = True
         super().__init__(
-            command_prefix="",
+            command_prefix=",",
             intents=intents,
             case_insensitive=True,
             help_command=AmenityHelpCommand(),
@@ -63,6 +91,7 @@ class Amenity(commands.Bot):
     async def setup_hook(self) -> None:
         await initialize_checks()
         init_installed_users_db()
+        self.add_check(public_prefix_command_predicate)
         self.add_check(user_not_blacklisted_predicate)
         self.add_check(command_enabled_predicate)
         self.check_premium_expiry.start()
@@ -144,6 +173,14 @@ class Amenity(commands.Bot):
         exception: Exception,
     ) -> None:
         if isinstance(exception, commands.CommandNotFound):
+            return
+
+        if isinstance(exception, PrefixCommandDisabled):
+            await context.reply(
+                "This command can only be used as a slash command.",
+                mention_author=False,
+                delete_after=5,
+            )
             return
 
         if isinstance(exception, commands.CommandOnCooldown):
