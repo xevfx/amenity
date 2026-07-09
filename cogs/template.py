@@ -24,7 +24,7 @@ URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 class Template(commands.Cog):
     display_name = "Templates"
-    group_name = "Templates"
+    group_name = "Utilities"
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

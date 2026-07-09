@@ -208,8 +208,6 @@ class UserUtility(commands.Cog):
             name="translate-to-english",
             callback=self.translate_to_english,
             type=discord.AppCommandType.message,
-            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
-            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.bot.tree.add_command(self.translate_to_english_menu)
 
@@ -274,7 +272,7 @@ class UserUtility(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.hybrid_command(name="userinfo", description="Get information about a user.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(user="The user to inspect.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -387,8 +385,6 @@ class UserUtility(commands.Cog):
         return f"{prefix}qr_{ctx.author.id}.png"
 
     @qr_group.command(name="text", description="Create a QR with custom text", aliases=["txt"])
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(txt="The text to encode in the QR code (max 200 characters).")
     async def qr_text(self, ctx: commands.Context, *, txt: str) -> None:
         if len(txt) > 200:
@@ -420,8 +416,6 @@ class UserUtility(commands.Cog):
         )
 
     @qr_group.command(name="crypto", description="Create a QR for a crypto address")
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(network="The crypto network", addy="The address to encode in the QR code.")
     @app_commands.choices(network=CRYPTO_NETWORK_CHOICES)
     async def qr_crypto(self, ctx: commands.Context, network: str, *, addy: str) -> None:
@@ -472,8 +466,6 @@ class UserUtility(commands.Cog):
         description="Create a QR for UPI with optional amount",
         aliases=["inr"],
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         upi_id="The UPI ID to encode in the QR code.",
         amount="The amount to include in the UPI QR code (optional).",
@@ -543,8 +535,6 @@ class UserUtility(commands.Cog):
         )
 
     @qr_group.command(name="paypal", description="Create QR for PayPal", aliases=["pp"])
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def paypal_qr(self, ctx: commands.Context, ppid: str) -> None:
 
         if len(ppid) > 50:
@@ -583,8 +573,6 @@ class UserUtility(commands.Cog):
         )
 
     @qr_group.command(name="url", description="Create a QR with custom URL", aliases=["link"])
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def qr_url(self, ctx: commands.Context, *, url: str) -> None:
 
         filename = self._qr_path(ctx, "url")
@@ -606,8 +594,6 @@ class UserUtility(commands.Cog):
         )
 
     @qr_group.command(name="esewa", description="Create a QR for eSewa", aliases=["npr"])
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def qr_esewa(
         self,
         ctx: commands.Context,

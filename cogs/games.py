@@ -248,7 +248,7 @@ class Games(commands.Cog):
     """
 
     display_name = "Games"
-    group_name = "Games"
+    group_name = "Fun"
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

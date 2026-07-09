@@ -19,7 +19,7 @@ from core.cache import cache
 
 class Reminder(commands.Cog):
     display_name = "Reminders"
-    group_name = "Reminders"
+    group_name = "Utilities"
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -31,8 +31,6 @@ class Reminder(commands.Cog):
             name="Remind me about it",
             callback=self.remind_me_about,
             type=discord.AppCommandType.message,
-            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
-            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.bot.tree.add_command(self.remind_me_about_menu)
 

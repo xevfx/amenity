@@ -79,7 +79,7 @@ MODEL_CHOICES: list[tuple[str, str]] = [
 
 class AI(commands.Cog):
     display_name = "AI"
-    group_name = "AI"
+    group_name = "Utilities"
 
     def __init__(self, bot: Amenity) -> None:
         self.bot = bot
@@ -89,15 +89,11 @@ class AI(commands.Cog):
             name="Sumarize it by GPT-OSS-120b",
             callback=self.summarize_message,
             type=discord.AppCommandType.message,
-            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
-            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.professional_menu = app_commands.ContextMenu(
             name="Make it professional by AI",
             callback=self.make_message_professional,
             type=discord.AppCommandType.message,
-            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
-            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         for menu in (
             self.summarize_menu,

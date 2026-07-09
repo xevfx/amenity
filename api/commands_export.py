@@ -12,7 +12,6 @@ from discord.ext import commands
 SCHEMA_VERSION = 2
 DEFAULT_PREFIX = ""
 DEFAULT_OUTPUT_PATH = "docs/commands.json"
-PUBLIC_PREFIX_COGS = {"ServerUtility"}
 
 
 def _clean_text(value: object, fallback: str = "") -> str:
@@ -174,14 +173,10 @@ def _has_hidden_parent(command: commands.Command[Any, ..., Any]) -> bool:
 def _is_public_prefix_command(command: commands.Command[Any, ..., Any], include_hidden: bool) -> bool:
     if include_hidden:
         return True
-    if command.hidden or _has_hidden_parent(command):
+    if command.hidden or _has_hidden_parent(command) or command.qualified_name == "help":
         return False
-    if command.qualified_name == "help":
-        return True
     cog = command.cog
-    if bool(getattr(cog, "hidden", False) or getattr(cog, "owner_only", False)):
-        return False
-    return type(cog).__name__ in PUBLIC_PREFIX_COGS
+    return not bool(getattr(cog, "hidden", False) or getattr(cog, "owner_only", False))
 
 
 def _is_public_app_command(command: app_commands.Command[Any, ..., Any], include_hidden: bool) -> bool:

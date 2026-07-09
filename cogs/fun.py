@@ -378,8 +378,6 @@ class Fun(commands.Cog):
         name="rip",
         description="Put a user's avatar on a RIP tombstone.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(user="The user to put on the tombstone.")
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def meme_rip(self, ctx: commands.Context, user: discord.User) -> None:
@@ -421,8 +419,6 @@ class Fun(commands.Cog):
         name="waiting",
         description="Put text on a waiting meme template.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(text="The text to display (max 60 characters).")
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def meme_waiting(self, ctx: commands.Context, *, text: str) -> None:
@@ -464,8 +460,6 @@ class Fun(commands.Cog):
         name="whiteboard",
         description="Put text on a whiteboard meme template.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
-    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(text="The text to display (max 120 characters).")
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def meme_whiteboard(self, ctx: commands.Context, *, text: str) -> None:
