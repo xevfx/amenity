@@ -305,7 +305,7 @@ class Crypto(commands.Cog):
         description="Get crypto address balances",
         invoke_without_command=True,
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def balance(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
@@ -541,7 +541,7 @@ class Crypto(commands.Cog):
         description="Get information about a blockchain transaction",
         invoke_without_command=True,
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def txid(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
@@ -1032,7 +1032,7 @@ class Crypto(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="price", description="Get the price of a cryptocurrency.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(coin="The cryptocurrency to get the price of")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -1106,7 +1106,7 @@ class Crypto(commands.Cog):
         name="convert",
         description="Convert between currencies (crypto & fiat).",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     @app_commands.describe(
@@ -1291,7 +1291,7 @@ class Crypto(commands.Cog):
         description="Manage your saved crypto addresses",
         invoke_without_command=True,
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def addy(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is not None:

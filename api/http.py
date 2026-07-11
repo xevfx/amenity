@@ -16,7 +16,7 @@ DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 
 def create_http_session(*, timeout: aiohttp.ClientTimeout | None = None) -> aiohttp.ClientSession:
-    return aiohttp.ClientSession(timeout=timeout)
+    return aiohttp.ClientSession(timeout=timeout or DEFAULT_TIMEOUT)
 
 
 def close_http_session(session: aiohttp.ClientSession, loop: asyncio.AbstractEventLoop) -> asyncio.Task[None] | None:

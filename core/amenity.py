@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from api.log import (
+    log_app_command_error,
     log_command_error,
     log_command_usage,
 )
@@ -65,22 +66,26 @@ class Amenity(commands.Bot):
         )
 
     async def setup_hook(self) -> None:
+        self.tree.on_error = self.on_app_command_error
         await initialize_checks()
         init_installed_users_db()
         self.add_check(user_not_blacklisted_predicate)
         self.add_check(command_enabled_predicate)
         self.check_premium_expiry.start()
         self.flush_installed_users.start()
+        failed_extensions: list[str] = []
 
         try:
             await self.load_extension("jishaku")
         except Exception as e:
-            logger.error(f"Failed to load extension jishaku: {e}")
+            failed_extensions.append("jishaku")
+            logger.exception("Failed to load extension jishaku: %s", e)
 
         try:
             await self.load_extension("core.help")
         except Exception as e:
-            logger.error(f"Failed to load extension core.help: {e}")
+            failed_extensions.append("core.help")
+            logger.exception("Failed to load extension core.help: %s", e)
 
         cogs_path = Path(__file__).resolve().parents[1] / "cogs"
         for module in pkgutil.iter_modules([str(cogs_path)]):
@@ -91,7 +96,12 @@ class Amenity(commands.Bot):
                 await self.load_extension(extension)
                 print(f"Loaded extension: {extension}")
             except Exception as e:
-                logger.error(f"Failed to load extension {extension}: {e}")
+                failed_extensions.append(extension)
+                logger.exception("Failed to load extension %s: %s", extension, e)
+
+        if failed_extensions:
+            failed = ", ".join(failed_extensions)
+            raise RuntimeError(f"Failed to load required extension(s): {failed}")
 
         # guild_id: int = os.getenv("GUILD_ID")
         # if guild_id:
@@ -265,78 +275,49 @@ class Amenity(commands.Bot):
         interaction: discord.Interaction,
         command: app_commands.Command,
     ) -> None:
+        del command
         track_installed_user(interaction.user)
 
-    # async def on_app_command_completion(
-    #     self,
-    #     interaction: discord.Interaction,
-    #     command: app_commands.AppCommand,
-    # ) -> None:
-    #     await log_app_command_usage(interaction, command)
+    async def on_app_command_error(
+        self,
+        interaction: discord.Interaction,
+        exception: app_commands.AppCommandError,
+    ) -> None:
+        async def send_error(message: str) -> None:
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(message, ephemeral=True)
+                    return
+                await interaction.response.send_message(message, ephemeral=True)
+            except discord.HTTPException:
+                return
 
-    # async def on_app_command_error(
-    #     self,
-    #     interaction: discord.Interaction,
-    #     exception: Exception,
-    # ) -> None:
-    #     # Helper to send response (handles both response and followup)
-    #     async def send_error(
-    #         embed: discord.Embed,
-    #         ephemeral: bool = True,
-    #         view: discord.ui.View | None = None,
-    #     ) -> None:
-    #         try:
-    #             if interaction.response.is_done():
-    #                 await interaction.followup.send(
-    #                     embed=embed,
-    #                     ephemeral=ephemeral,
-    #                     view=view,
-    #                 )
-    #             else:
-    #                 await interaction.response.send_message(
-    #                     embed=embed,
-    #                     ephemeral=ephemeral,
-    #                     view=view,
-    #                 )
-    #         except discord.HTTPException:
-    #             pass  # Interaction may have expired
+        original = getattr(exception, "original", exception)
 
-    #     if isinstance(exception, app_commands.CommandOnCooldown):
-    #         embed = discord.Embed(
-    #             description=(f"Command on cooldown. Try again after {exception.retry_after:.2f} seconds."),
-    #             color=discord.Color.red(),
-    #         )
-    #         await send_error(embed, ephemeral=True)
-    #         return
+        if isinstance(exception, app_commands.CommandOnCooldown) or isinstance(original, commands.CommandOnCooldown):
+            retry_after = getattr(exception, "retry_after", getattr(original, "retry_after", 0.0))
+            await send_error(f"Command on cooldown. Try again after {retry_after:.2f} seconds.")
+            return
 
-    #     if isinstance(exception, app_commands.TransformerError):
-    #         embed = discord.Embed(
-    #             description="Invalid argument provided. Please check your input.",
-    #             color=discord.Color.red(),
-    #         )
-    #         await send_error(embed, ephemeral=True)
-    #         return
+        if isinstance(exception, app_commands.TransformerError | app_commands.CommandSignatureMismatch):
+            await send_error("Invalid argument provided. Please check your input.")
+            return
 
-    #     if isinstance(exception, app_commands.NoPrivateMessage):
-    #         embed = discord.Embed(description="This command can only be used in a server.", color=discord.Color.red())
-    #         await send_error(embed, ephemeral=True)
-    #         return
+        if isinstance(exception, app_commands.NoPrivateMessage) or isinstance(original, commands.NoPrivateMessage):
+            await send_error("This command can only be used in a server.")
+            return
 
-    #     if isinstance(exception, app_commands.CheckFailure):
-    #         embed = discord.Embed(
-    #             description="You don't have permission to use this command.",
-    #             color=discord.Color.red(),
-    #         )
-    #         await send_error(embed, ephemeral=True)
-    #         return
+        if isinstance(original, UserBlacklisted | CommandDisabled | PremiumRequired):
+            await send_error(str(original))
+            return
 
-    #     embed = discord.Embed(
-    #         description="An unexpected error occurred. Please try again later.",
-    #         color=discord.Color.red(),
-    #     )
-    #     await send_error(embed, ephemeral=True, view=BotLinks().support())
-    #     await log_app_command_error(interaction, exception)
-    #     raise exception
+        if isinstance(exception, app_commands.CheckFailure) or isinstance(original, commands.CheckFailure):
+            await send_error("You don't have permission to use this command.")
+            return
+
+        await send_error("An unexpected error occurred. Please try again later.")
+        await log_app_command_error(interaction, exception)
+        raise exception
 
     # async def invoke_help_command(self, ctx: commands.Context) -> None:
     #     """Send help for the current command."""

@@ -31,6 +31,8 @@ class Reminder(commands.Cog):
             name="Remind me about it",
             callback=self.remind_me_about,
             type=discord.AppCommandType.message,
+            allowed_installs=app_commands.AppInstallationType(guild=False, user=True),
+            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.bot.tree.add_command(self.remind_me_about_menu)
 
@@ -42,7 +44,8 @@ class Reminder(commands.Cog):
         )
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        conn.execute("PRAGMA busy_timeout = 10000")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -180,7 +183,7 @@ class Reminder(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_group(name="reminder", description="Manage reminders", aliases=["re"])
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reminder(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
@@ -198,7 +201,7 @@ class Reminder(commands.Cog):
     )
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reminder_create(self, ctx: commands.Context, time: str, *, name: str) -> None:
         if not time:
@@ -254,7 +257,7 @@ class Reminder(commands.Cog):
     @reminder.command(name="list", description="List your reminders", aliases=["ls"])
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reminder_list(self, ctx: commands.Context) -> None:
         reminders = self._get_user_reminders(ctx.author.id)
@@ -294,7 +297,7 @@ class Reminder(commands.Cog):
     @app_commands.describe(name="The name of the reminder to delete")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reminder_delete(self, ctx: commands.Context, name: str) -> None:
         name = name.strip()
@@ -363,7 +366,7 @@ class Reminder(commands.Cog):
     @reminder.command(name="nuke", description="Nuke all your reminders")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def reminder_nuke(self, ctx: commands.Context) -> None:
         confirmed = await confirm_action(

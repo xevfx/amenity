@@ -1,5 +1,6 @@
 import io
 import random
+import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
@@ -72,7 +73,7 @@ class Fun(commands.Cog):
         return fields
 
     @commands.hybrid_command(name="dictionary", description="Look up a word in the dictionary.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(word="The word to define.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -108,7 +109,7 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="joke", description="Get a random joke.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def joke(self, ctx: commands.Context) -> None:
@@ -132,7 +133,7 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="cat-fact", description="Get a random cat fact.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def catfact(self, ctx: commands.Context) -> None:
@@ -155,7 +156,7 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="dog-fact", description="Get a random dog fact.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def dogfact(self, ctx: commands.Context) -> None:
@@ -185,7 +186,7 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name="gay-rate", description="Check how gay somone is (for fun).")
     @app_commands.describe(user="Optional: The user to check. Defaults to yourself.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def gayrate(self, ctx: commands.Context, user: discord.User | None = None) -> None:
@@ -201,7 +202,7 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name="faker", description="Generate a fake name and address by country name or code.")
     @app_commands.describe(country="Optional: Country name or 2-letter code (e.g. Nepal, India, US, IN)")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def faker_cmd(self, ctx: commands.Context, country: str | None = None) -> None:
@@ -287,7 +288,7 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="dad-joke", description="Get a random dad joke from icanhazdadjoke.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def dad_joke_cmd(self, ctx: commands.Context) -> None:
@@ -304,7 +305,7 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="dark-joke", description="Get a random dark joke from the Official Joke API.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 3, commands.BucketType.user)
     @commands.max_concurrency(20, commands.BucketType.default, wait=True)
@@ -331,10 +332,10 @@ class Fun(commands.Cog):
             await ctx.reply(embed=embed, mention_author=False)
         except Exception as e:
             await ctx.send("An error occurred")
-            await log_exception(e)
+            log_exception(e)
 
     @commands.hybrid_command(name="fact", description="Get a random completely useless fact.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def useless_fact_cmd(self, ctx: commands.Context) -> None:
@@ -364,7 +365,7 @@ class Fun(commands.Cog):
     )
     @commands.cooldown(1, 10, commands.BucketType.user)
     @commands.max_concurrency(5, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def meme_group(self, ctx: commands.Context) -> None:
         await ctx.reply(
@@ -383,7 +384,7 @@ class Fun(commands.Cog):
     async def meme_rip(self, ctx: commands.Context, user: discord.User) -> None:
         target = user
         avatar_url = target.display_avatar.with_format("png").with_size(128)
-        output = Path(f"rip_{target.id}.png")
+        output = _temp_png_path(f"rip_{target.id}_")
 
         await ctx.defer()
 
@@ -407,7 +408,7 @@ class Fun(commands.Cog):
                 text=f"Requested by {ctx.author}",
                 icon_url=ctx.author.display_avatar.url,
             )
-            await ctx.send(embed=embed, file=discord.File(str(output)))
+            await ctx.send(embed=embed, file=discord.File(str(output), filename=output.name))
         except Exception as exc:
             log_exception(exc)
             await ctx.send("An error occurred while processing the image.")
@@ -430,7 +431,7 @@ class Fun(commands.Cog):
             await ctx.send("Text must be 60 characters or less.")
             return
 
-        output = Path(f"waiting_{ctx.author.id}.png")
+        output = _temp_png_path(f"waiting_{ctx.author.id}_")
 
         await ctx.defer()
 
@@ -448,7 +449,7 @@ class Fun(commands.Cog):
                 text=f"Requested by {ctx.author}",
                 icon_url=ctx.author.display_avatar.url,
             )
-            await ctx.send(embed=embed, file=discord.File(str(output)))
+            await ctx.send(embed=embed, file=discord.File(str(output), filename=output.name))
         except Exception as exc:
             log_exception(exc)
             await ctx.send("An error occurred while processing the image.")
@@ -471,7 +472,7 @@ class Fun(commands.Cog):
             await ctx.send("Text must be 120 characters or less.")
             return
 
-        output = Path(f"whiteboard_{ctx.author.id}.png")
+        output = _temp_png_path(f"whiteboard_{ctx.author.id}_")
 
         await ctx.defer()
 
@@ -489,7 +490,7 @@ class Fun(commands.Cog):
                 text=f"Requested by {ctx.author}",
                 icon_url=ctx.author.display_avatar.url,
             )
-            await ctx.send(embed=embed, file=discord.File(str(output)))
+            await ctx.send(embed=embed, file=discord.File(str(output), filename=output.name))
         except Exception as exc:
             log_exception(exc)
             await ctx.send("An error occurred while processing the image.")
@@ -518,6 +519,11 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFon
 
         lines.extend(_split_long_line(draw, current, font, max_width))
     return lines
+
+
+def _temp_png_path(prefix: str) -> Path:
+    with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".png", delete=False) as handle:
+        return Path(handle.name)
 
 
 def _split_long_line(

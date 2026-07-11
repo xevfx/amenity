@@ -33,7 +33,8 @@ class Template(commands.Cog):
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        conn.execute("PRAGMA busy_timeout = 10000")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -177,7 +178,7 @@ class Template(commands.Cog):
         return choices
 
     @commands.hybrid_group(name="template", description="Manage message templates", aliases=["tpl"])
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def template(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
@@ -192,7 +193,7 @@ class Template(commands.Cog):
     @app_commands.describe(name="Template name")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def template_create(self, ctx: commands.Context, name: str) -> None:
         name = name.strip()
@@ -211,7 +212,7 @@ class Template(commands.Cog):
     @app_commands.describe(name="Template name")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def template_edit(self, ctx: commands.Context, name: str) -> None:
         template = self._get_template_by_name_or_id(ctx.author.id, name)
@@ -240,7 +241,7 @@ class Template(commands.Cog):
     @template.command(name="list", description="List and preview your templates", aliases=["ls"])
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def template_list(self, ctx: commands.Context) -> None:
         templates = self._get_user_templates(ctx.author.id)
@@ -258,7 +259,7 @@ class Template(commands.Cog):
     @app_commands.describe(name="Template name")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def template_send(self, ctx: commands.Context, name: str) -> None:
         template = self._get_template_by_name_or_id(ctx.author.id, name)
@@ -283,7 +284,7 @@ class Template(commands.Cog):
     @app_commands.describe(name="Template name")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def template_delete(self, ctx: commands.Context, name: str) -> None:
         template = self._get_template_by_name_or_id(ctx.author.id, name)
@@ -306,7 +307,7 @@ class Template(commands.Cog):
     @template.command(name="nuke", description="Delete all your templates")
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def template_nuke(self, ctx: commands.Context) -> None:
         confirmed = await confirm_action(

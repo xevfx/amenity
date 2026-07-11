@@ -89,11 +89,15 @@ class AI(commands.Cog):
             name="Sumarize it by GPT-OSS-120b",
             callback=self.summarize_message,
             type=discord.AppCommandType.message,
+            allowed_installs=app_commands.AppInstallationType(guild=False, user=True),
+            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.professional_menu = app_commands.ContextMenu(
             name="Make it professional by AI",
             callback=self.make_message_professional,
             type=discord.AppCommandType.message,
+            allowed_installs=app_commands.AppInstallationType(guild=False, user=True),
+            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         for menu in (
             self.summarize_menu,
@@ -506,7 +510,7 @@ class AI(commands.Cog):
         name="ai",
         description="Ask one AI model from Google, Groq, Pollinations, or OpenRouter.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         model="Pick the model to use.",
@@ -561,7 +565,7 @@ class AI(commands.Cog):
         name="image-gen",
         description="Generate an image with Pollinations image generation.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         prompt="Describe the image you want to generate.",
@@ -608,7 +612,7 @@ class AI(commands.Cog):
         name="fix-grammar",
         description="Fix grammar, spelling, punctuation, and clarity in text.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(text="The text to fix.")
     @commands.cooldown(1, 15, commands.BucketType.user)

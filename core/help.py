@@ -957,7 +957,7 @@ class HelpCog(commands.Cog):
         await self.index.build_cache()
 
     @app_commands.command(name="help", description="Show the help menu")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(query="Command or category")
     async def help(self, interaction: discord.Interaction, query: str | None = None) -> None:

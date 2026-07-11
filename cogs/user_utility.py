@@ -1,5 +1,6 @@
 import os
 import re
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -43,6 +44,11 @@ def _safe_unlink(path: str) -> None:
         os.remove(path)
     except FileNotFoundError:
         return
+
+
+def _temp_png_path(prefix: str) -> str:
+    with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".png", delete=False) as handle:
+        return handle.name
 
 
 def _build_qr(data: str, *, box_size: int = 10, border: int = 4) -> qrcode.QRCode:
@@ -208,6 +214,8 @@ class UserUtility(commands.Cog):
             name="translate-to-english",
             callback=self.translate_to_english,
             type=discord.AppCommandType.message,
+            allowed_installs=app_commands.AppInstallationType(guild=False, user=True),
+            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.bot.tree.add_command(self.translate_to_english_menu)
 
@@ -246,14 +254,14 @@ class UserUtility(commands.Cog):
 
     @commands.hybrid_command(name="ping", description="Check the bot's latency.")
     @commands.cooldown(1, 5, commands.BucketType.user)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def ping(self, ctx: commands.Context) -> None:
         latency = self.bot.latency * 1000
         await ctx.reply(f"Latency: {latency:.2f} ms", ephemeral=True, mention_author=False)
 
     @commands.hybrid_command(name="avatar", description="Fetch a user's avatar.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(user="The user to fetch the avatar for.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -317,7 +325,7 @@ class UserUtility(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.hybrid_command(name="banner", description="Fetch a user's banner.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(user="The user to fetch the banner for.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -356,7 +364,7 @@ class UserUtility(commands.Cog):
     )
     @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.max_concurrency(15, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def qr_group(self, ctx: commands.Context) -> None:
         await ctx.reply("Use /qr", delete_after=5, ephemeral=True, mention_author=False)
@@ -376,13 +384,14 @@ class UserUtility(commands.Cog):
         if fields:
             for name, value in fields:
                 embed.add_field(name=name, value=_truncate(value, EMBED_FIELD_VALUE_LIMIT), inline=False)
-        embed.set_image(url=f"attachment://{filename}")
+        attachment_name = Path(filename).name
+        embed.set_image(url=f"attachment://{attachment_name}")
         embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
-        await ctx.send(embed=embed, file=discord.File(filename))
+        await ctx.send(embed=embed, file=discord.File(filename, filename=attachment_name))
         _safe_unlink(filename)
 
     def _qr_path(self, ctx: commands.Context, prefix: str) -> str:
-        return f"{prefix}qr_{ctx.author.id}.png"
+        return _temp_png_path(f"{prefix}qr_{ctx.author.id}_")
 
     @qr_group.command(name="text", description="Create a QR with custom text", aliases=["txt"])
     @app_commands.describe(txt="The text to encode in the QR code (max 200 characters).")
@@ -625,7 +634,7 @@ class UserUtility(commands.Cog):
         )
 
     @commands.hybrid_command(name="thumbnail", description="Fetch the youtube video thumnail.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The YouTube video URL to fetch the thumbnail from.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -662,7 +671,7 @@ class UserUtility(commands.Cog):
         description="Watch an Instagram reel without leaving Discord.",
         aliases=["ig"],
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The Instagram reel URL to embed.")
     async def igv(self, ctx: commands.Context, link: str) -> None:
@@ -683,7 +692,7 @@ class UserUtility(commands.Cog):
         description="Watch an X.com post without leaving Discord.",
         aliases=["tweet"],
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The tweet URL to embed.")
     async def twitter(self, ctx: commands.Context, link: str) -> None:
@@ -700,7 +709,7 @@ class UserUtility(commands.Cog):
         await ctx.reply(f"[Post]({newlink})", mention_author=False)
 
     @commands.hybrid_command(name="tiktok", description="Watch a TikTok video without leaving Discord.", aliases=["tt"])
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(link="The TikTok video URL to embed.")
     async def tiktok(self, ctx: commands.Context, link: str) -> None:
@@ -717,7 +726,7 @@ class UserUtility(commands.Cog):
         await ctx.reply(f"[Video]({newlink})", mention_author=False)
 
     @commands.hybrid_command(name="tinyurl", description="Shorten a URL using TinyURL")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 15, commands.BucketType.user)
     @commands.max_concurrency(20, commands.BucketType.default, wait=True)
@@ -756,7 +765,7 @@ class UserUtility(commands.Cog):
 
     @commands.hybrid_command(name="math", description="Perform a math calculation.")
     @commands.cooldown(1, 5, commands.BucketType.user)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.max_concurrency(10, commands.BucketType.default, wait=True)
     @app_commands.describe(expression="The mathematical expression to evaluate.")
@@ -781,7 +790,7 @@ class UserUtility(commands.Cog):
 
     @commands.hybrid_command(name="binary", description="Convert text to binary or binary to text.")
     @app_commands.describe(message="The text or binary to convert.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def binary(self, ctx: commands.Context, *, message: str) -> None:
         """
@@ -864,7 +873,7 @@ class UserUtility(commands.Cog):
             )
 
     @commands.hybrid_command(name="translate", description="Translate text to a target language.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         to="Target language (name or code, e.g., Spanish or es). Defaults to English.",
@@ -906,7 +915,7 @@ class UserUtility(commands.Cog):
 
 
     @commands.hybrid_command(name="deco", description="Get a user avatar decoration.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(user="The user whose avatar decoration you want to see.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -922,7 +931,7 @@ class UserUtility(commands.Cog):
 
 
     @commands.hybrid_command(name="enlarge", description="Enlarge a custom emoji.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(emoji="The custom emoji you want to enlarge.")
     async def enlarge(self, ctx: commands.Context, emoji: discord.PartialEmoji) -> None:
