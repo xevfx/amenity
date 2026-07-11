@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import suppress
 from datetime import datetime
 from typing import TYPE_CHECKING
 from urllib.parse import quote_plus
@@ -40,7 +41,7 @@ class Github(commands.Cog):
         aliases=["gh"],
         invoke_without_command=True,
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     @commands.max_concurrency(20, commands.BucketType.default, wait=True)
@@ -115,9 +116,11 @@ class Github(commands.Cog):
                 return
 
             def make_embed(repo: dict) -> discord.Embed:
+                full_name = repo.get("full_name") or "Unknown repository"
+                html_url = repo.get("html_url") or "https://github.com"
                 embed = discord.Embed(
-                    title=f"{Emoji.GITHUB.value} {repo['full_name']}",
-                    url=repo['html_url'],
+                    title=f"{Emoji.GITHUB.value} {full_name}",
+                    url=html_url,
                     description=repo.get('description') or "No description provided.",
                     color=discord.Color.dark_grey(),
                 )
@@ -192,7 +195,8 @@ class Github(commands.Cog):
                     self.previous_button.disabled = True
                     self.next_button.disabled = True
                     if self.message:
-                        await self.message.edit(view=self)
+                        with suppress(discord.HTTPException):
+                            await self.message.edit(view=self)
 
             view = RepoPaginator(items)
             embed = make_embed(items[0])
@@ -219,7 +223,7 @@ class Github(commands.Cog):
                 color=discord.Color.red(),
             )
             if ctx.interaction:
-                await ctx.interaction.followup.send(embed=err_embed)
+                await ctx.send(embed=err_embed)
             else:
                 await ctx.send(embed=err_embed)
             return
@@ -244,8 +248,9 @@ class Github(commands.Cog):
         else:
             # 2. Extract explicit details
             title = data.get("title", "No Title Provided")
-            author = data["user"]["login"]
-            avatar = data["user"]["avatar_url"]
+            user_data = data.get("user") if isinstance(data.get("user"), dict) else {}
+            author = user_data.get("login") or "unknown"
+            avatar = user_data.get("avatar_url")
 
             # Status evaluation rules (Merged vs Closed vs Open)
             state = data.get("state", "open").upper()
@@ -262,13 +267,18 @@ class Github(commands.Cog):
             commits = data.get("commits", 0)
 
             # Branches tracking structural pointers
-            head_branch = data["head"]["ref"]
-            base_branch = data["base"]["ref"]
+            head_data = data.get("head") if isinstance(data.get("head"), dict) else {}
+            base_data = data.get("base") if isinstance(data.get("base"), dict) else {}
+            head_branch = head_data.get("ref") or "unknown"
+            base_branch = base_data.get("ref") or "unknown"
 
             # Timestamp conversion parsing loop
-            created_raw = data["created_at"]
-            dt = datetime.strptime(created_raw, "%Y-%m-%dT%H:%M:%SZ")
-            discord_ts = f"<t:{int(dt.timestamp())}:F>"
+            created_raw = data.get("created_at")
+            try:
+                dt = datetime.strptime(str(created_raw), "%Y-%m-%dT%H:%M:%SZ")
+                discord_ts = f"<t:{int(dt.timestamp())}:F>"
+            except (TypeError, ValueError):
+                discord_ts = "Unknown"
 
             # 3. Design output layout metrics block representation
             description = (
@@ -291,7 +301,8 @@ class Github(commands.Cog):
                 description=description,
                 color=color,
             )
-            embed.set_thumbnail(url=avatar)
+            if avatar:
+                embed.set_thumbnail(url=avatar)
 
         await ctx.send(embed=embed)
 

@@ -129,7 +129,7 @@ class ServerUtility(commands.Cog):
         return embed
 
     @commands.hybrid_group(name="server", description="Server utility commands", invoke_without_command=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     async def server_group(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
@@ -187,14 +187,14 @@ class ServerUtility(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.hybrid_group(name="role", description="Role utility commands", invoke_without_command=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     async def role_group(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
 
     @role_group.command(name="info", description="Get details of a specific role.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.describe(role="The role to fetch information for.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -239,14 +239,14 @@ class ServerUtility(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.hybrid_group(name="member", description="Member utility commands", invoke_without_command=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     async def member_group(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
 
     @member_group.command(name="info", description="Get information about a specific member.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.describe(user="The member to fetch information for.")
     @commands.cooldown(1, 5, commands.BucketType.user)
@@ -286,14 +286,14 @@ class ServerUtility(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.hybrid_group(name="channel", description="Channel utility commands", invoke_without_command=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     async def channel_group(self, ctx: commands.Context) -> None:
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
 
     @channel_group.command(name="info", description="Get information about a specific channel.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.describe(channel="The channel to fetch information for.")
     @commands.cooldown(1, 5, commands.BucketType.user)

@@ -275,7 +275,7 @@ class Games(commands.Cog):
 
     @commands.hybrid_command(name="coinflip", description="Flip a coin.")
     @app_commands.describe(side="Optional: call heads or tails")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def coin_flip(self, ctx: commands.Context, side: str | None = None) -> None:
@@ -301,7 +301,7 @@ class Games(commands.Cog):
 
     @commands.hybrid_command(name="blackjack", description="Play Blackjack with another user.")
     @app_commands.describe(opponent="User to challenge")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def blackjack(self, ctx: commands.Context, opponent: discord.User | None = None) -> None:
@@ -533,7 +533,7 @@ class Games(commands.Cog):
 
     @commands.hybrid_command(name="tic-tac-toe", description="Play a game of Tic-Tac-Toe using buttons.")
     @app_commands.describe(opponent="Optional: The user you want to challenge")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def tictactoe(self, ctx: commands.Context, opponent: discord.User | None = None) -> None:
@@ -571,7 +571,7 @@ class Games(commands.Cog):
 
     @commands.hybrid_command(name="mines", description="Play a game of classic Mines to the finish.")
     @app_commands.describe(mines="The number of hidden mines on the board (Between 1 and 24)")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def mines(self, ctx: commands.Context, mines: int) -> None:

@@ -9,6 +9,7 @@ import os
 import re
 import struct
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -405,6 +406,11 @@ def _html_preview_url(url: str) -> str:
     return f"http://htmlpreview.github.io/?{url}"
 
 
+def _temp_png_path(prefix: str) -> Path:
+    with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".png", delete=False) as handle:
+        return Path(handle.name)
+
+
 def _github_token() -> str | None:
     token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
     if token:
@@ -540,6 +546,8 @@ class Tools(commands.Cog):
             name="Preview HTML",
             callback=self.preview_html_file,
             type=discord.AppCommandType.message,
+            allowed_installs=app_commands.AppInstallationType(guild=False, user=True),
+            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
         )
         self.bot.tree.add_command(self.html_preview_menu)
 
@@ -689,7 +697,7 @@ class Tools(commands.Cog):
         invoke_without_command=True,
     )
     @app_commands.describe(message="The message to echo.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def say_group(self, ctx: commands.Context, *, message: str) -> None:
@@ -709,7 +717,7 @@ class Tools(commands.Cog):
     )
     @commands.cooldown(1, 10, commands.BucketType.user)
     @commands.max_concurrency(5, commands.BucketType.default, wait=True)
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def image_group(self, ctx: commands.Context) -> None:
         await ctx.reply(
@@ -734,7 +742,7 @@ class Tools(commands.Cog):
     ) -> None:
         target = user or ctx.author
         avatar_url = target.display_avatar.with_format("png").with_size(512)
-        output = Path(f"stroke_{target.id}.png")
+        output = _temp_png_path(f"stroke_{target.id}_")
 
         await ctx.defer()
 
@@ -758,7 +766,7 @@ class Tools(commands.Cog):
                 text=f"Requested by {ctx.author}",
                 icon_url=ctx.author.display_avatar.url,
             )
-            await ctx.send(embed=embed, file=discord.File(str(output)))
+            await ctx.send(embed=embed, file=discord.File(str(output), filename=output.name))
         except Exception as exc:
             log_exception(exc)
             await ctx.send("An error occurred while processing the image.")
@@ -775,7 +783,7 @@ class Tools(commands.Cog):
     ) -> None:
         target = user or ctx.author
         avatar_url = target.display_avatar.with_format("png").with_size(512)
-        output = Path(f"{filename_prefix}_{target.id}.png")
+        output = _temp_png_path(f"{filename_prefix}_{target.id}_")
 
         await ctx.defer()
 
@@ -799,7 +807,7 @@ class Tools(commands.Cog):
                 text=f"Requested by {ctx.author}",
                 icon_url=ctx.author.display_avatar.url,
             )
-            await ctx.send(embed=embed, file=discord.File(str(output)))
+            await ctx.send(embed=embed, file=discord.File(str(output), filename=output.name))
         except Exception as exc:
             log_exception(exc)
             await ctx.send("An error occurred while processing the image.")
@@ -900,7 +908,7 @@ class Tools(commands.Cog):
         ctx: commands.Context,
         image: discord.Attachment,
     ) -> None:
-        output = Path(f"invert_{ctx.author.id}.png")
+        output = _temp_png_path(f"invert_{ctx.author.id}_")
 
         await ctx.defer()
 
@@ -920,7 +928,7 @@ class Tools(commands.Cog):
                 text=f"Requested by {ctx.author}",
                 icon_url=ctx.author.display_avatar.url,
             )
-            await ctx.send(embed=embed, file=discord.File(str(output)))
+            await ctx.send(embed=embed, file=discord.File(str(output), filename=output.name))
         except Exception as exc:
             log_exception(exc)
             await ctx.send("An error occurred while processing the image.")
@@ -940,7 +948,7 @@ class Tools(commands.Cog):
         text="The text to encrypt or encode.",
         key="Required when method is secret-key.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def encrypt(
@@ -979,7 +987,7 @@ class Tools(commands.Cog):
         text="The text to decrypt or decode.",
         key="Required when method is secret-key.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def decrypt(
@@ -1010,7 +1018,7 @@ class Tools(commands.Cog):
 
     @commands.hybrid_command(name="2fa", description="Generate a 2FA/TOTP code from a secret.")
     @app_commands.describe(secret="The base32 2FA secret.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def two_factor_code(self, ctx: commands.Context, *, secret: str) -> None:
@@ -1031,7 +1039,7 @@ class Tools(commands.Cog):
 
     @commands.hybrid_command(name="sanitize-url", description="Remove tracking parameters from a URL.")
     @app_commands.describe(url="The URL to clean.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def sanitize_url(self, ctx: commands.Context, *, url: str) -> None:
@@ -1073,7 +1081,7 @@ class Tools(commands.Cog):
         engine="The service to build a query link for.",
         query="The search text.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def query_link(self, ctx: commands.Context, engine: str, *, query: str) -> None:
@@ -1100,7 +1108,7 @@ class Tools(commands.Cog):
         no_avatar="Also include users with no custom avatar.",
         deco="Also include users with an avatar decoration.",
     )
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def checkusers(
@@ -1191,7 +1199,7 @@ class Tools(commands.Cog):
         text="The full text to edit.",
     )
     @app_commands.rename(from_="from")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def replace_text(
@@ -1217,7 +1225,7 @@ class Tools(commands.Cog):
 
     @commands.hybrid_command(name="figlet", description="Render text as figlet ASCII art.")
     @app_commands.describe(text="The text to render.")
-    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def figlettext(self, ctx: commands.Context, *, text: str) -> None:
