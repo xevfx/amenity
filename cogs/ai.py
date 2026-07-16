@@ -63,11 +63,11 @@ AI_MODELS: dict[str, AIModel] = {
         model_id="groq/compound",
         env_var="GROQ",
     ),
-    "openrouter/openai/gpt-oss-120b:free": AIModel(
-        key="openrouter/openai/gpt-oss-120b:free",
+    "openrouter/tencent/hy3:free": AIModel(
+        key="openrouter/tencent/hy3:free",
         provider="OpenRouter",
-        label="GPT OSS 120B Free",
-        model_id="openai/gpt-oss-120b:free",
+        label="Tencent hy3",
+        model_id="tencent/hy3:free",
         env_var="OPENROUTER",
     ),
 }
@@ -363,8 +363,8 @@ class AI(commands.Cog):
                 color=discord.Color.blurple(),
             )
             extra = (
-                f"#- {model.provider}: {model.label}\n"
-                f"#- Prompt: {discord.utils.escape_markdown(prompt[:PROMPT_PREVIEW_CHARS])}"
+                f"-# {model.provider}: {model.label}\n"
+                f"-# Prompt: {discord.utils.escape_markdown(prompt[:PROMPT_PREVIEW_CHARS])}"
             )
             embed.add_field(name="Extra", value=extra or "\u200b", inline=False)
             embed.set_footer(

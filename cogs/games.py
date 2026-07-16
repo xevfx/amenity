@@ -543,7 +543,11 @@ class Games(commands.Cog):
             else:
                 await ctx.send("An error occurred while playing Blackjack.")
 
-    @commands.hybrid_command(name="tic-tac-toe", description="Play a game of Tic-Tac-Toe using buttons.", aliases=["ttt"])
+    @commands.hybrid_command(
+        name="tic-tac-toe",
+        description="Play a game of Tic-Tac-Toe using buttons.",
+        aliases=["ttt"]
+    )
     @app_commands.describe(opponent="Optional: The user you want to challenge")
     @app_commands.allowed_installs(guilds=False, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)

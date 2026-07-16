@@ -927,7 +927,8 @@ class UserUtility(commands.Cog):
         if not decoration:
             await ctx.send(f"{target} does not have an avatar decoration.")
             return
-        await ctx.send(f"{Emoji.INVITE.value} [Link of decoration](https://discord.com/shop#itemSkuId={target.avatar_decoration_sku_id})\n\n{target.avatar_decoration.url}")
+        await ctx.send(f"{Emoji.INVITE.value} [Link of decoration](https://discord.com/shop#itemSkuId={target.avatar_decoration_sku_id})\n"
+                       f"[Download {Emoji.DOWNLOAD}]({target.avatar_decoration.url})")
 
 
     @commands.hybrid_command(name="enlarge", description="Enlarge a custom emoji.")
